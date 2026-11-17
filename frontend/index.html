@@ -1,0 +1,877 @@
+<!DOCTYPE html>
+<html lang="es" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JG Inmobiliaria — Vivienda Exclusiva y Administración en Medellín y Bogotá</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script id="tailwind-config">
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            'accent': '#B45309',
+            'on-accent': '#FFFFFF',
+            'light-primary': '#0F172A',
+            'light-on-primary': '#FFFFFF',
+            'light-primary-container': '#F1F5F9',
+            'light-on-primary-container': '#0F172A',
+            'light-surface': '#FAFAF9',
+            'light-on-surface': '#1C1917',
+            'light-surface-variant': '#F5F5F4',
+            'light-on-surface-variant': '#44403C',
+            'light-outline': '#CBD5E1',
+            'light-outline-variant': '#E2E8F0',
+            'dark-primary': '#F8FAFC',
+            'dark-on-primary': '#0F172A',
+            'dark-primary-container': '#1E293B',
+            'dark-on-primary-container': '#F8FAFC',
+            'dark-surface': '#0B0F19',
+            'dark-on-surface': '#F1F5F9',
+            'dark-surface-variant': '#1E293B',
+            'dark-on-surface-variant': '#94A3B8',
+            'dark-outline': '#334155',
+            'dark-outline-variant': '#1E293B',
+          },
+          borderRadius: {
+            'sm': '6px',
+            'DEFAULT': '8px',
+            'md': '12px',
+            'lg': '16px',
+            'xl': '24px',
+            'full': '9999px',
+          },
+          fontFamily: {
+            'display': ['"Playfair Display"', 'serif'],
+            'headline': ['"Playfair Display"', 'serif'],
+            'title': ['"Raleway"', 'sans-serif'],
+            'body': ['"Raleway"', 'sans-serif'],
+            'label': ['"Raleway"', 'sans-serif'],
+          },
+        },
+      },
+    };
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,400&family=Raleway:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/styles.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body class="bg-light-surface dark:bg-dark-surface text-light-on-surface dark:text-dark-on-surface font-body antialiased selection:bg-accent selection:text-on-accent pb-20 md:pb-0 transition-colors duration-200">
+
+  <!-- ========================================== -->
+  <!-- NAVEGACIÓN SUPERIOR                        -->
+  <!-- ========================================== -->
+  <header class="sticky top-0 z-40 bg-light-surface/95 dark:bg-dark-surface/95 backdrop-blur border-b border-light-outline-variant dark:border-dark-outline-variant">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
+
+      <!-- Marca / Logo -->
+      <a href="#inicio" class="flex items-center gap-3 shrink-0">
+        <div class="w-10 h-10 rounded-sm bg-light-primary dark:bg-accent text-white flex items-center justify-center font-headline font-bold text-xl tracking-tighter">
+          JG
+        </div>
+        <div class="flex flex-col">
+          <span class="font-headline font-bold text-base sm:text-lg tracking-wide text-light-primary dark:text-dark-primary">JG INMOBILIARIA</span>
+          <span class="text-[10px] uppercase tracking-widest text-accent font-semibold">Medellín · Bogotá · Solo Vivienda</span>
+        </div>
+      </a>
+
+      <!-- Menú principal escritorio -->
+      <nav class="hidden lg:flex items-center gap-7 text-sm font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+        <a href="#inmuebles" class="hover:text-light-primary dark:hover:text-white transition">Viviendas</a>
+        <a href="#experiencia-3d" class="hover:text-light-primary dark:hover:text-white transition">Maqueta 3D</a>
+        <a href="#cotizador" class="hover:text-light-primary dark:hover:text-white transition">Cotizador</a>
+        <a href="#contacto" class="hover:text-light-primary dark:hover:text-white transition">Sedes</a>
+      </nav>
+
+      <!-- Acciones de cabecera -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <a href="tel:+573114436916" class="hidden xl:flex items-center gap-1.5 text-xs font-semibold text-light-on-surface dark:text-dark-on-surface hover:text-accent transition">
+          <span class="material-symbols-outlined text-[18px] text-accent">phone_in_talk</span>
+          <span class="tabular-nums">+57 311 443 6916</span>
+        </a>
+
+        <button onclick="openLookupModal()" type="button" class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline text-xs font-semibold hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition" title="Consultar estado de mi reserva">
+          <span class="material-symbols-outlined text-[16px] text-accent">receipt_long</span>
+          <span>Mi Código</span>
+        </button>
+
+        <button onclick="openCartDrawer()" type="button" class="relative inline-flex items-center gap-2 px-3.5 py-2 rounded-DEFAULT bg-accent text-white text-xs sm:text-sm font-semibold hover:opacity-95 transition shadow-sm">
+          <span class="material-symbols-outlined text-[18px]">shopping_bag</span>
+          <span class="hidden sm:inline">Reservas</span>
+          <span id="cart-badge" class="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-light-primary text-white text-[11px] font-bold tabular-nums">0</span>
+        </button>
+
+        <button onclick="toggleTheme()" id="theme-toggle-btn" type="button" class="w-9 h-9 rounded-DEFAULT border border-light-outline dark:border-dark-outline flex items-center justify-center hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant transition" aria-label="Cambiar tema claro u oscuro" title="Cambiar modo claro/oscuro">
+          <span id="theme-icon" class="material-symbols-outlined text-[18px]">dark_mode</span>
+        </button>
+
+        <a href="/admin" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-DEFAULT bg-light-primary dark:bg-dark-primary-container text-white text-xs font-semibold hover:opacity-90 transition" title="Acceso Administrador">
+          <span class="material-symbols-outlined text-[16px]">admin_panel_settings</span>
+          <span class="hidden md:inline">Admin</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Chips rápidos en móvil (inspirado en mockup móvil) -->
+    <div class="md:hidden px-4 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar border-t border-light-outline-variant/60 dark:border-dark-outline-variant">
+      <button onclick="quickFilterCity('all')" data-chip-city="all" class="mobile-city-chip px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-light-primary text-white">Todas las zonas</button>
+      <button onclick="quickFilterCity('medellin')" data-chip-city="medellin" class="mobile-city-chip px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-light-surface-variant dark:bg-dark-surface-variant border border-light-outline dark:border-dark-outline">Medellín</button>
+      <button onclick="quickFilterCity('bogota')" data-chip-city="bogota" class="mobile-city-chip px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-light-surface-variant dark:bg-dark-surface-variant border border-light-outline dark:border-dark-outline">Bogotá</button>
+      <button onclick="openLookupModal()" class="px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap bg-amber-50 dark:bg-amber-950/40 text-accent border border-accent/30">Consultar Reserva</button>
+    </div>
+  </header>
+
+  <main>
+    <!-- ========================================== -->
+    <!-- 1. SECCIÓN INICIO CON ANIMACIÓN 3D + BUSCADOR -->
+    <!-- ========================================== -->
+    <section id="inicio" class="relative overflow-hidden bg-light-primary text-white min-h-[640px] flex items-center">
+      <div id="hero-3d-container" class="absolute inset-0 z-0 opacity-70 pointer-events-auto cursor-grab active:cursor-grabbing"></div>
+      <div class="absolute inset-0 z-10 bg-gradient-to-r from-light-primary via-light-primary/85 to-light-primary/30 pointer-events-none"></div>
+
+      <div class="relative z-20 max-w-7xl mx-auto px-4 sm:px-6 py-16 lg:py-20 w-full grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
+        <div class="lg:col-span-8 flex flex-col gap-6">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 border border-white/20 backdrop-blur w-fit">
+            <span class="w-2 h-2 rounded-full bg-accent animate-ping"></span>
+            <span class="text-xs font-semibold tracking-wider uppercase text-slate-100">Administración de Viviendas · Compra y Arriendo Online</span>
+          </div>
+
+          <h1 class="font-headline text-3xl sm:text-5xl font-bold leading-tight tracking-tight">
+            Viviendas exclusivas y administración integral en <span class="italic font-normal text-amber-300">Medellín</span> y <span class="italic font-normal text-amber-300">Bogotá</span>.
+          </h1>
+
+          <p class="text-base sm:text-lg text-slate-300 max-w-2xl">
+            Explora apartamentos, penthouses y casas seleccionadas, simula tu cuota en línea y separa tu vivienda de forma rápida por transferencia, tarjeta de crédito o confirmación directa por WhatsApp.
+          </p>
+
+          <!-- Buscador rápido intuitivo dentro del Hero -->
+          <form onsubmit="applyHeroSearch(event)" class="bg-white/95 dark:bg-dark-surface/95 backdrop-blur rounded-xl p-4 shadow-2xl border border-white/20 text-light-on-surface dark:text-dark-on-surface grid grid-cols-1 sm:grid-cols-4 gap-3 max-w-3xl">
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-light-on-surface-variant dark:text-dark-on-surface-variant mb-1">Ciudad</label>
+              <select id="hero-city" class="w-full rounded-DEFAULT border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-sm font-medium">
+                <option value="all">Medellín y Bogotá</option>
+                <option value="medellin">Medellín</option>
+                <option value="bogota">Bogotá</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-light-on-surface-variant dark:text-dark-on-surface-variant mb-1">Operación</label>
+              <select id="hero-tx" class="w-full rounded-DEFAULT border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-sm font-medium">
+                <option value="all">Venta y Arriendo</option>
+                <option value="venta">Venta</option>
+                <option value="arriendo">Arriendo</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase text-light-on-surface-variant dark:text-dark-on-surface-variant mb-1">Vivienda</label>
+              <select id="hero-type" class="w-full rounded-DEFAULT border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-sm font-medium">
+                <option value="all">Casas y Aptos</option>
+                <option value="apartamento">Apartamentos / PH</option>
+                <option value="casa">Casas / Villas</option>
+              </select>
+            </div>
+            <div class="flex items-end">
+              <button type="submit" class="w-full h-[42px] rounded-DEFAULT bg-accent text-white font-semibold text-sm hover:opacity-95 transition flex items-center justify-center gap-1.5 shadow-md">
+                <span class="material-symbols-outlined text-[18px]">search</span>
+                <span>Buscar</span>
+              </button>
+            </div>
+          </form>
+
+          <!-- Métricas -->
+          <div class="grid grid-cols-3 gap-6 pt-4 border-t border-slate-700/60 max-w-lg">
+            <div>
+              <p class="font-headline text-2xl font-bold text-white tabular-nums">+420</p>
+              <p class="text-xs text-slate-400">Viviendas Administradas</p>
+            </div>
+            <div>
+              <p class="font-headline text-2xl font-bold text-white tabular-nums">98.4%</p>
+              <p class="text-xs text-slate-400">Satisfacción Clientes</p>
+            </div>
+            <div>
+              <p class="font-headline text-2xl font-bold text-white tabular-nums">100%</p>
+              <p class="text-xs text-slate-400">Separación Online</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tarjeta indicadora 3D -->
+        <div class="lg:col-span-4 hidden lg:flex justify-end">
+          <div class="bg-light-primary/85 backdrop-blur border border-slate-700/80 rounded-xl p-5 max-w-xs shadow-xl text-slate-200 pointer-events-none">
+            <div class="flex items-center gap-2 text-accent mb-2">
+              <span class="material-symbols-outlined text-[20px]">gesture</span>
+              <span class="text-xs uppercase tracking-wider font-semibold">Interactividad 3D</span>
+            </div>
+            <p class="text-xs text-slate-300 leading-relaxed">
+              Arrastra con el mouse o desliza con el dedo para rotar nuestra maqueta arquitectónica en tiempo real.
+            </p>
+            <div class="mt-3 flex items-center justify-between text-xs text-slate-400 pt-3 border-t border-slate-800">
+              <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400"></span> Render WebGL</span>
+              <a href="#experiencia-3d" class="text-amber-300 font-semibold pointer-events-auto hover:underline">Ver visor</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- 2. CATÁLOGO DE VIVIENDAS CON FILTROS Y RESERVA E-COMMERCE  -->
+    <!-- ========================================================== -->
+    <section id="inmuebles" class="py-16 lg:py-20 max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="flex flex-col md:flex-row md:items-end justify-between mb-8 gap-6">
+        <div>
+          <div class="flex items-center gap-2 text-accent text-xs uppercase font-bold tracking-widest mb-2">
+            <span class="material-symbols-outlined text-[16px]">apartment</span>
+            Catálogo Exclusivo de Vivienda
+          </div>
+          <h2 class="font-headline text-3xl sm:text-4xl font-semibold">
+            Propiedades Residenciales Disponibles
+          </h2>
+          <p class="text-sm sm:text-base text-light-on-surface-variant dark:text-dark-on-surface-variant mt-2 max-w-2xl">
+            Filtra por operación, ciudad o presupuesto. Puedes ver la ficha completa, calcular cuotas o separar tu vivienda directamente en línea.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-3 shrink-0">
+          <span class="px-3.5 py-1.5 rounded-full bg-light-primary-container dark:bg-dark-primary-container text-light-primary dark:text-dark-primary text-xs font-semibold border border-light-outline dark:border-dark-outline">
+            Mostrando <span id="visible-count">0</span> viviendas
+          </span>
+          <button id="btn-reset-filters" type="button" class="text-xs font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant hover:text-accent underline flex items-center gap-1">
+            <span class="material-symbols-outlined text-[16px]">refresh</span> Limpiar
+          </button>
+        </div>
+      </div>
+
+      <!-- Barra de Filtros -->
+      <div class="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-5 border border-light-outline-variant dark:border-dark-outline-variant mb-10 shadow-sm">
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <div>
+            <label for="filter-search" class="text-xs font-semibold flex items-center gap-1 mb-1.5">
+              <span class="material-symbols-outlined text-[16px] text-accent">search</span> Buscar sector o nombre
+            </label>
+            <input id="filter-search" type="text" placeholder="Ej: Poblado, Rosales..." class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm focus:border-accent focus:ring-0">
+          </div>
+
+          <div>
+            <label for="filter-transaction" class="text-xs font-semibold flex items-center gap-1 mb-1.5">
+              <span class="material-symbols-outlined text-[16px] text-accent">sell</span> Operación
+            </label>
+            <select id="filter-transaction" class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+              <option value="all">Todas (Venta y Arriendo)</option>
+              <option value="venta">Venta</option>
+              <option value="arriendo">Arriendo</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="filter-property-type" class="text-xs font-semibold flex items-center gap-1 mb-1.5">
+              <span class="material-symbols-outlined text-[16px] text-accent">villa</span> Tipo de Vivienda
+            </label>
+            <select id="filter-property-type" class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+              <option value="all">Casas y Apartamentos</option>
+              <option value="apartamento">Apartamentos &amp; Penthouses</option>
+              <option value="casa">Casas &amp; Villas</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="filter-location" class="text-xs font-semibold flex items-center gap-1 mb-1.5">
+              <span class="material-symbols-outlined text-[16px] text-accent">location_on</span> Ciudad
+            </label>
+            <select id="filter-location" class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+              <option value="all">Medellín y Bogotá</option>
+              <option value="medellin">Medellín y Oriente</option>
+              <option value="bogota">Bogotá D.C.</option>
+            </select>
+          </div>
+
+          <div>
+            <label for="filter-budget" class="text-xs font-semibold flex items-center gap-1 mb-1.5">
+              <span class="material-symbols-outlined text-[16px] text-accent">payments</span> Rango de Precio
+            </label>
+            <select id="filter-budget" class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+              <option value="all">Todos los rangos</option>
+              <option value="under-2b">Menos de $2.000M (o Arriendos)</option>
+              <option value="2b-4b">$2.000M a $4.000 Millones</option>
+              <option value="over-4b">Más de $4.000 Millones</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cuadrícula dinámica desde la base de datos -->
+      <div id="properties-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7"></div>
+
+      <!-- Estado vacío -->
+      <div id="no-results-message" class="hidden text-center py-16 bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl border border-dashed border-light-outline dark:border-dark-outline">
+        <span class="material-symbols-outlined text-[48px] text-slate-400 mb-2">search_off</span>
+        <h4 class="font-headline text-xl font-semibold">No encontramos viviendas con esos filtros</h4>
+        <p class="text-sm text-light-on-surface-variant dark:text-dark-on-surface-variant mt-1 mb-4">Intenta ampliar el presupuesto o limpiar los filtros.</p>
+        <button onclick="resetFiltersUI()" type="button" class="px-5 py-2 rounded-DEFAULT bg-light-primary text-white text-sm font-semibold">Restablecer búsqueda</button>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- 3. EXPERIENCIA 3D / MAQUETA DIGITAL ARQUITECTÓNICA        -->
+    <!-- ========================================================== -->
+    <section id="experiencia-3d" class="py-16 lg:py-20 bg-slate-900 text-white relative overflow-hidden">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 relative z-10">
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-center">
+          <div class="lg:col-span-5 flex flex-col gap-6">
+            <div class="flex items-center gap-2 text-accent text-xs uppercase font-bold tracking-widest">
+              <span class="material-symbols-outlined text-[18px]">view_in_ar</span>
+              Vanguardia Tecnológica
+            </div>
+
+            <h2 class="font-headline text-3xl sm:text-4xl font-semibold text-white">
+              Visualizador de Modelos 3D y Recorridos Espaciales
+            </h2>
+
+            <p class="text-base text-slate-300">
+              En JG Inmobiliaria digitalizamos nuestros proyectos residenciales con modelado en tiempo real para que inspecciones la volumetría, alturas libres y orientación solar antes de agendar tu visita o separar tu unidad.
+            </p>
+
+            <div class="space-y-4 pt-2">
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-accent text-[22px]">domain</span>
+                <div>
+                  <h4 class="font-bold text-base text-white">Estructura Modular Inteligente</h4>
+                  <p class="text-xs text-slate-400">Alturas libres de 3.20m y ventanería con control termoacústico.</p>
+                </div>
+              </div>
+              <div class="flex items-start gap-3">
+                <span class="material-symbols-outlined text-accent text-[22px]">energy_savings_leaf</span>
+                <div>
+                  <h4 class="font-bold text-base text-white">Certificación Sostenible</h4>
+                  <p class="text-xs text-slate-400">Ahorro energético comprobado del 35% en zonas comunes y viviendas.</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-3 pt-2">
+              <button id="btn-3d-wireframe" type="button" class="px-4 py-2 rounded-DEFAULT bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold flex items-center gap-2 transition">
+                <span class="material-symbols-outlined text-[16px]">grid_4x4</span>
+                Alternar Malla Estructural
+              </button>
+              <button id="btn-3d-rotate" type="button" class="px-4 py-2 rounded-DEFAULT bg-slate-800 hover:bg-slate-700 border border-slate-600 text-xs font-semibold flex items-center gap-2 transition">
+                <span class="material-symbols-outlined text-[16px]">pause</span>
+                Pausar Rotación
+              </button>
+            </div>
+          </div>
+
+          <div class="lg:col-span-7">
+            <div class="relative w-full h-[420px] sm:h-[460px] bg-slate-950 rounded-2xl overflow-hidden border border-slate-800 shadow-2xl">
+              <div id="interactive-model-canvas" class="w-full h-full cursor-grab active:cursor-grabbing"></div>
+              <div class="absolute top-4 left-4 bg-slate-900/85 backdrop-blur px-3 py-1.5 rounded-DEFAULT border border-slate-700 text-xs flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span>Modelo 3D: Torre JG Skyline (En Vivo)</span>
+              </div>
+              <div class="absolute bottom-4 right-4 bg-slate-900/90 backdrop-blur px-3 py-2 rounded-DEFAULT border border-slate-700 text-xs text-slate-400 flex items-center gap-3">
+                <span class="flex items-center gap-1"><span class="material-symbols-outlined text-[16px]">mouse</span> Arrastra para rotar</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- 4. COTIZADOR EN LÍNEA                                      -->
+    <!-- ========================================================== -->
+    <section id="cotizador" class="py-16 lg:py-20 bg-light-surface-variant dark:bg-dark-surface-variant">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6">
+        <div class="text-center max-w-3xl mx-auto mb-12">
+          <div class="inline-flex items-center gap-2 text-accent text-xs uppercase font-bold tracking-widest mb-2">
+            <span class="material-symbols-outlined text-[18px]">calculate</span>
+            Simulador Financiero
+          </div>
+          <h2 class="font-headline text-3xl sm:text-4xl font-semibold">
+            Cotizador en Línea de Vivienda
+          </h2>
+          <p class="text-sm sm:text-base text-light-on-surface-variant dark:text-dark-on-surface-variant mt-2">
+            Calcula tu cuota mensual para compra o el total mensual con póliza y administración en arriendo, y separa tu vivienda al instante.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+          <div class="lg:col-span-7 bg-light-surface dark:bg-dark-surface rounded-xl p-6 sm:p-8 border border-light-outline-variant dark:border-dark-outline-variant shadow-sm space-y-6">
+            <div>
+              <label class="text-xs font-semibold mb-2 block">Modalidad de Operación</label>
+              <div class="grid grid-cols-2 gap-3">
+                <button type="button" id="btn-mode-compra" onclick="setCotizadorMode('compra')" class="py-3 px-4 rounded-DEFAULT text-sm border-2 border-light-primary bg-light-primary text-white font-semibold transition">
+                  Compra / Financiación
+                </button>
+                <button type="button" id="btn-mode-arriendo" onclick="setCotizadorMode('arriendo')" class="py-3 px-4 rounded-DEFAULT text-sm border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant font-semibold transition">
+                  Arriendo / Póliza
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label for="cotizador-propiedad" class="text-xs font-semibold mb-1.5 block">Vivienda de Interés</label>
+              <select id="cotizador-propiedad" onchange="onPropiedadChange(this.value)" class="w-full px-3.5 py-2.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-sm"></select>
+            </div>
+
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-semibold">Valor del Inmueble (COP)</label>
+                <span id="valor-display" class="font-headline font-bold text-lg text-accent tabular-nums">$0</span>
+              </div>
+              <input type="range" id="cotizador-slider-valor" min="5000000" max="8000000000" step="5000000" value="2650000000" oninput="onValorSlider(this.value)" class="w-full accent-accent cursor-pointer">
+              <div class="flex justify-between text-xs text-light-on-surface-variant dark:text-dark-on-surface-variant mt-1">
+                <span>$5M</span>
+                <span>$4.000M</span>
+                <span>$8.000M</span>
+              </div>
+            </div>
+
+            <div id="container-cuota-inicial">
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="text-xs font-semibold">Cuota Inicial Sugerida (20% a 80%)</label>
+                <span id="cuota-inicial-pct-display" class="font-bold text-xs text-light-primary dark:text-amber-300">30%</span>
+              </div>
+              <input type="range" id="cotizador-slider-inicial" min="20" max="80" step="5" value="30" oninput="onInicialSlider(this.value)" class="w-full accent-accent cursor-pointer">
+            </div>
+
+            <div id="container-plazo" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label for="cotizador-plazo" class="text-xs font-semibold mb-1.5 block">Plazo de Financiación</label>
+                <select id="cotizador-plazo" onchange="actualizarValoresCotizador()" class="w-full px-3.5 py-2.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-sm">
+                  <option value="5">5 Años (60 cuotas)</option>
+                  <option value="10">10 Años (120 cuotas)</option>
+                  <option value="15" selected>15 Años (180 cuotas)</option>
+                  <option value="20">20 Años (240 cuotas)</option>
+                </select>
+              </div>
+              <div>
+                <label for="cotizador-tasa" class="text-xs font-semibold mb-1.5 block">Tasa E.A. Estimada</label>
+                <select id="cotizador-tasa" onchange="actualizarValoresCotizador()" class="w-full px-3.5 py-2.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-sm">
+                  <option value="11.5">11.5% E.A. (Banca Preferencial)</option>
+                  <option value="12.8" selected>12.8% E.A. (Tasa Mercado)</option>
+                  <option value="14.2">14.2% E.A. (Crédito Ordinario)</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tarjeta Resumen -->
+          <div class="lg:col-span-5 bg-light-primary text-white rounded-xl p-6 sm:p-8 shadow-lg border border-slate-700">
+            <div class="flex items-center justify-between pb-4 border-b border-slate-700 mb-6">
+              <span class="text-xs uppercase tracking-wider text-accent font-semibold">Resumen de Liquidación</span>
+              <span class="material-symbols-outlined text-slate-400">verified_user</span>
+            </div>
+
+            <div class="space-y-3.5 mb-6 text-sm text-slate-300">
+              <div class="flex justify-between">
+                <span>Valor Total Vivienda:</span>
+                <span id="resumen-valor-inmueble" class="font-headline font-semibold text-white tabular-nums">$0</span>
+              </div>
+              <div class="flex justify-between">
+                <span id="label-resumen-2">Cuota Inicial Proyectada:</span>
+                <span id="resumen-cuota-inicial" class="font-semibold text-white tabular-nums">$0</span>
+              </div>
+              <div class="flex justify-between">
+                <span id="label-resumen-3">Monto a Financiar:</span>
+                <span id="resumen-monto-financiar" class="font-semibold text-white tabular-nums">$0</span>
+              </div>
+              <div class="flex justify-between">
+                <span>Plazo Seleccionado:</span>
+                <span id="resumen-plazo" class="font-semibold text-white">15 Años</span>
+              </div>
+            </div>
+
+            <div class="bg-slate-800/80 rounded-lg p-5 border border-slate-700 mb-6">
+              <span class="text-xs text-slate-300 uppercase tracking-wide block mb-1">Cuota Mensual Estimada</span>
+              <div class="flex items-baseline gap-2">
+                <span id="resumen-cuota-mensual" class="font-headline text-3xl font-bold text-amber-300 tabular-nums">$0</span>
+                <span class="text-xs text-slate-400">COP/mes</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-2">
+                *Valores referenciales sujetos a validación de documentos con tu asesor JG.
+              </p>
+            </div>
+
+            <div class="space-y-3">
+              <button onclick="separarDesdeCotizador()" type="button" class="w-full py-3.5 rounded-DEFAULT bg-accent text-white text-sm font-semibold hover:opacity-95 transition flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-[18px]">shopping_bag</span>
+                Separar esta Vivienda Online
+              </button>
+              <button onclick="enviarCotizacionWhatsApp()" type="button" class="w-full py-2.5 rounded-DEFAULT bg-emerald-600/90 hover:bg-emerald-600 text-white text-xs font-semibold transition flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-[18px]">chat</span>
+                Enviar Cotización por WhatsApp
+              </button>
+              <button onclick="window.print()" type="button" class="w-full py-2.5 rounded-DEFAULT bg-white/10 hover:bg-white/15 border border-white/20 text-white text-xs font-semibold transition flex items-center justify-center gap-2">
+                <span class="material-symbols-outlined text-[18px]">download</span>
+                Imprimir / Guardar PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========================================================== -->
+    <!-- 5. SEDES, CONTACTO Y MAPA                                  -->
+    <!-- ========================================================== -->
+    <section id="contacto" class="py-16 lg:py-20 max-w-7xl mx-auto px-4 sm:px-6">
+      <div class="text-center max-w-3xl mx-auto mb-12">
+        <div class="inline-flex items-center gap-2 text-accent text-xs uppercase font-bold tracking-widest mb-2">
+          <span class="material-symbols-outlined text-[18px]">pin_drop</span>
+          Nuestras Sedes Principales
+        </div>
+        <h2 class="font-headline text-3xl sm:text-4xl font-semibold">
+          Visítanos en Medellín y Bogotá
+        </h2>
+        <p class="text-sm sm:text-base text-light-on-surface-variant dark:text-dark-on-surface-variant mt-2">
+          Atención personalizada para propietarios, compradores y arrendatarios en salas privadas de negocios.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-stretch">
+        <div class="lg:col-span-5 flex flex-col gap-5">
+          <!-- Sede Medellín -->
+          <div class="bg-light-surface dark:bg-dark-surface-variant rounded-xl p-6 border-2 border-accent/40 shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold uppercase tracking-wider text-accent bg-accent/10 px-2.5 py-0.5 rounded-sm">Sede Medellín</span>
+              <span class="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">Abierto ahora</span>
+            </div>
+            <h3 class="font-headline text-lg font-semibold">Torre Financiera El Poblado</h3>
+            <p class="text-sm text-light-on-surface-variant dark:text-dark-on-surface-variant mt-1 flex items-start gap-2">
+              <span class="material-symbols-outlined text-[20px] text-accent shrink-0">location_on</span>
+              <span>Cra. 43A # 1-50, Piso 18, El Poblado, Medellín</span>
+            </p>
+            <div class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-light-outline-variant dark:border-dark-outline text-xs">
+              <div>
+                <span class="font-bold block">WhatsApp / Tel:</span>
+                <span class="tabular-nums">+57 311 443 6916</span>
+              </div>
+              <div>
+                <span class="font-bold block">Correo:</span>
+                <span>admin@jginmobiliaria.com</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sede Bogotá -->
+          <div class="bg-light-surface dark:bg-dark-surface-variant rounded-xl p-6 border border-light-outline-variant dark:border-dark-outline-variant shadow-sm">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-bold uppercase tracking-wider bg-light-primary-container dark:bg-dark-primary-container px-2.5 py-0.5 rounded-sm">Sede Bogotá</span>
+              <span class="text-xs text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-full">Atención ejecutiva</span>
+            </div>
+            <h3 class="font-headline text-lg font-semibold">Centro Empresarial Chicó Rosales</h3>
+            <p class="text-sm text-light-on-surface-variant dark:text-dark-on-surface-variant mt-1 flex items-start gap-2">
+              <span class="material-symbols-outlined text-[20px] text-accent shrink-0">location_on</span>
+              <span>Calle 93 # 11-45, Of. 602, Chicó, Bogotá D.C.</span>
+            </p>
+            <div class="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-light-outline-variant dark:border-dark-outline text-xs">
+              <div>
+                <span class="font-bold block">WhatsApp / Tel:</span>
+                <span class="tabular-nums">+57 311 443 6916</span>
+              </div>
+              <div>
+                <span class="font-bold block">Horario:</span>
+                <span>Lun - Sáb: 8:30am - 6:00pm</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Formulario de Contacto conectado al Backend -->
+          <div class="bg-light-surface-variant dark:bg-dark-surface-variant rounded-xl p-6 border border-light-outline-variant dark:border-dark-outline-variant">
+            <h4 class="font-headline text-lg font-semibold mb-1">¿Prefieres que te llamemos?</h4>
+            <p class="text-xs text-light-on-surface-variant dark:text-dark-on-surface-variant mb-4">Un asesor de JG Inmobiliaria recibirá tu solicitud en nuestro sistema de inmediato.</p>
+            <form id="contact-form" onsubmit="submitInquiry(event)" class="space-y-3">
+              <input id="inq-name" type="text" placeholder="Tu nombre completo" required class="w-full px-3.5 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <input id="inq-phone" type="tel" placeholder="WhatsApp (+57...)" required class="w-full px-3.5 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+                <select id="inq-city" class="w-full px-3.5 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm">
+                  <option value="Medellín">Medellín</option>
+                  <option value="Bogotá">Bogotá</option>
+                </select>
+              </div>
+              <textarea id="inq-message" rows="2" placeholder="¿Qué vivienda te interesa o cómo podemos ayudarte?" class="w-full px-3.5 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface text-sm"></textarea>
+              <button type="submit" class="w-full py-2.5 rounded-DEFAULT bg-light-primary dark:bg-accent text-white text-sm font-semibold hover:opacity-95 transition">
+                Solicitar Llamada Privada
+              </button>
+              <p id="inq-feedback" class="text-xs font-semibold hidden"></p>
+            </form>
+          </div>
+        </div>
+
+        <!-- Mapa Interactivo -->
+        <div class="lg:col-span-7 flex flex-col">
+          <div class="bg-light-surface dark:bg-dark-surface-variant rounded-xl border border-light-outline-variant dark:border-dark-outline-variant overflow-hidden shadow-sm flex flex-col h-full">
+            <div class="bg-light-surface-variant dark:bg-dark-surface px-5 py-3 border-b border-light-outline-variant dark:border-dark-outline-variant flex items-center justify-between">
+              <span class="text-sm font-bold flex items-center gap-2">
+                <span class="material-symbols-outlined text-[18px] text-accent">map</span>
+                Localizador de Sedes
+              </span>
+              <div class="flex gap-2">
+                <button type="button" id="tab-map-med" onclick="switchMap('medellin')" class="px-3 py-1 rounded-sm text-xs font-semibold bg-light-primary text-white">Medellín</button>
+                <button type="button" id="tab-map-bog" onclick="switchMap('bogota')" class="px-3 py-1 rounded-sm text-xs font-semibold bg-light-surface dark:bg-dark-surface-variant">Bogotá</button>
+              </div>
+            </div>
+            <div class="relative flex-1 min-h-[440px] w-full bg-slate-100">
+              <iframe id="map-iframe" src="https://www.openstreetmap.org/export/embed.html?bbox=-75.578%2C6.205%2C-75.568%2C6.215&layer=mapnik&marker=6.210%2C-75.573" class="w-full h-full border-0 absolute inset-0" loading="lazy" title="Mapa de Sede El Poblado Medellín"></iframe>
+              <div class="absolute bottom-5 left-5 right-5 md:right-auto md:w-80 bg-white/95 backdrop-blur-md p-4 rounded-lg shadow-xl border border-slate-200 text-slate-900">
+                <div class="flex items-center gap-2 text-accent text-xs font-bold uppercase mb-1">
+                  <span class="material-symbols-outlined text-[16px]">navigation</span>
+                  <span id="float-title">Sede El Poblado - Milla de Oro</span>
+                </div>
+                <p id="float-desc" class="text-xs text-slate-700">Cra. 43A # 1-50, Piso 18. Parqueadero de visitantes exclusivo.</p>
+                <div class="mt-2.5 pt-2 border-t border-slate-100 text-xs font-semibold">
+                  <a id="float-link" href="https://maps.google.com/?q=El+Poblado+Medellin" target="_blank" rel="noopener noreferrer" class="text-light-primary hover:underline inline-flex items-center gap-1">
+                    Abrir en Google Maps <span class="material-symbols-outlined text-[14px]">open_in_new</span>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ========================================================== -->
+  <!-- PIE DE PÁGINA                                              -->
+  <!-- ========================================================== -->
+  <footer class="bg-light-primary text-slate-300 py-14 border-t border-slate-800">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 grid grid-cols-1 md:grid-cols-4 gap-10">
+      <div class="md:col-span-2 space-y-3">
+        <div class="flex items-center gap-3">
+          <div class="w-9 h-9 rounded-sm bg-accent text-white flex items-center justify-center font-headline font-bold">JG</div>
+          <span class="font-headline font-bold text-lg text-white">JG INMOBILIARIA</span>
+        </div>
+        <p class="text-xs text-slate-400 max-w-md leading-relaxed">
+          Administración integral, arriendo y venta de viviendas exclusivas en Medellín y Bogotá. Atención directa por WhatsApp y separación en línea segura.
+        </p>
+        <p class="text-xs text-slate-300">
+          Contacto: <a href="mailto:admin@jginmobiliaria.com" class="text-amber-300 hover:underline">admin@jginmobiliaria.com</a> · <a href="https://wa.me/573114436916" target="_blank" rel="noopener noreferrer" class="text-amber-300 hover:underline">+57 311 443 6916</a>
+        </p>
+      </div>
+      <div>
+        <h4 class="font-bold text-sm text-white mb-3">Navegación</h4>
+        <ul class="space-y-2 text-xs text-slate-400">
+          <li><a href="#inmuebles" class="hover:text-white">Catálogo de Viviendas</a></li>
+          <li><a href="#experiencia-3d" class="hover:text-white">Maqueta 3D Interactiva</a></li>
+          <li><a href="#cotizador" class="hover:text-white">Cotizador en Línea</a></li>
+          <li><a href="#contacto" class="hover:text-white">Sedes y Contacto</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4 class="font-bold text-sm text-white mb-3">Accesos</h4>
+        <ul class="space-y-2 text-xs text-slate-400">
+          <li><button onclick="openCartDrawer()" class="hover:text-white">Mi Reserva / Carrito</button></li>
+          <li><button onclick="openLookupModal()" class="hover:text-white">Consultar Código de Reserva</button></li>
+          <li><a href="/admin" class="hover:text-white">Panel Administrador</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 mt-10 pt-6 border-t border-slate-800 flex flex-col sm:flex-row justify-between text-xs text-slate-500 gap-2">
+      <p>© 2026 JG Inmobiliaria. Todos los derechos reservados.</p>
+      <p>Medellín · Bogotá · Solo Vivienda</p>
+    </div>
+  </footer>
+
+  <!-- ========================================================== -->
+  <!-- BARRA DE NAVEGACIÓN INFERIOR EN CELULAR (MOCKUP MÓVIL)     -->
+  <!-- ========================================================== -->
+  <nav id="mobile-bottom-nav" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-light-surface/95 dark:bg-dark-surface/95 backdrop-blur border-t border-light-outline-variant dark:border-dark-outline-variant px-2 py-1.5 flex items-center justify-around">
+    <a href="#inicio" class="flex flex-col items-center gap-0.5 text-[11px] font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <span class="material-symbols-outlined text-[20px]">home</span> Inicio
+    </a>
+    <a href="#inmuebles" class="flex flex-col items-center gap-0.5 text-[11px] font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <span class="material-symbols-outlined text-[20px]">apartment</span> Viviendas
+    </a>
+    <a href="#cotizador" class="flex flex-col items-center gap-0.5 text-[11px] font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <span class="material-symbols-outlined text-[20px]">calculate</span> Cotizar
+    </a>
+    <button onclick="openCartDrawer()" type="button" class="flex flex-col items-center gap-0.5 text-[11px] font-semibold text-accent relative">
+      <span class="material-symbols-outlined text-[20px]">shopping_bag</span> Reservas
+      <span id="cart-badge-mobile" class="absolute -top-0.5 right-1 min-w-[16px] h-4 px-1 rounded-full bg-light-primary text-white text-[10px] font-bold flex items-center justify-center">0</span>
+    </button>
+    <a href="/admin" class="flex flex-col items-center gap-0.5 text-[11px] font-semibold text-light-on-surface-variant dark:text-dark-on-surface-variant">
+      <span class="material-symbols-outlined text-[20px]">admin_panel_settings</span> Admin
+    </a>
+  </nav>
+
+  <!-- ========================================================== -->
+  <!-- DRAWER LATERAL: CARRITO DE SEPARACIÓN Y CHECKOUT           -->
+  <!-- ========================================================== -->
+  <div id="cart-drawer" class="fixed inset-0 z-50 hidden">
+    <div onclick="closeCartDrawer()" class="absolute inset-0 bg-black/50 backdrop-blur-sm"></div>
+    <div class="absolute right-0 top-0 bottom-0 w-full max-w-lg bg-light-surface dark:bg-dark-surface shadow-2xl border-l border-light-outline-variant dark:border-dark-outline-variant flex flex-col animate-fade-slide">
+      <div class="p-5 bg-light-primary text-white flex items-center justify-between">
+        <div>
+          <h3 class="font-headline text-xl font-bold">Separación de Vivienda</h3>
+          <p class="text-xs text-slate-300">Reserva en línea con respaldo de JG Inmobiliaria</p>
+        </div>
+        <button onclick="closeCartDrawer()" type="button" class="w-9 h-9 rounded-full hover:bg-white/10 flex items-center justify-center">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+
+      <div id="cart-body" class="flex-1 overflow-y-auto p-5 space-y-6">
+        <!-- Lista de inmuebles en carrito -->
+        <div id="cart-items-container" class="space-y-3"></div>
+
+        <!-- Formulario de Checkout -->
+        <form id="checkout-form" onsubmit="submitReservation(event)" class="hidden space-y-4 pt-4 border-t border-light-outline-variant dark:border-dark-outline-variant">
+          <h4 class="font-headline text-lg font-semibold">Datos para tu Reserva</h4>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <input id="co-name" type="text" placeholder="Nombre completo *" required class="px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-sm">
+            <input id="co-doc" type="text" placeholder="Cédula o Pasaporte *" required class="px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-sm">
+            <input id="co-email" type="email" placeholder="Correo electrónico *" required class="px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-sm">
+            <input id="co-phone" type="tel" placeholder="Teléfono / WhatsApp *" required class="px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-sm">
+          </div>
+          <input id="co-city" type="text" placeholder="Ciudad actual *" required class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-sm">
+
+          <!-- Selector Método de Pago -->
+          <div>
+            <label class="block text-xs font-bold uppercase tracking-wider mb-2">Método de Pago / Confirmación *</label>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="cursor-pointer">
+                <input type="radio" name="payment_method" value="transferencia" checked onchange="onPaymentMethodChange()" class="sr-only peer">
+                <div class="p-2.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline peer-checked:border-accent peer-checked:bg-accent/10 text-center text-xs font-semibold transition">
+                  <span class="material-symbols-outlined block text-[20px] mb-1 text-accent">account_balance</span>
+                  Transferencia
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="payment_method" value="tarjeta" onchange="onPaymentMethodChange()" class="sr-only peer">
+                <div class="p-2.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline peer-checked:border-accent peer-checked:bg-accent/10 text-center text-xs font-semibold transition">
+                  <span class="material-symbols-outlined block text-[20px] mb-1 text-accent">credit_card</span>
+                  Tarjeta Crédito
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="payment_method" value="whatsapp" onchange="onPaymentMethodChange()" class="sr-only peer">
+                <div class="p-2.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline peer-checked:border-accent peer-checked:bg-accent/10 text-center text-xs font-semibold transition">
+                  <span class="material-symbols-outlined block text-[20px] mb-1 text-emerald-600">chat</span>
+                  WhatsApp
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <!-- Detalles dinámicos según método de pago -->
+          <div id="pay-box-transferencia" class="p-3.5 rounded-DEFAULT bg-light-surface-variant dark:bg-dark-surface-variant border border-light-outline-variant dark:border-dark-outline text-xs space-y-2">
+            <p class="font-bold">Transferencia Bancaria / PSE:</p>
+            <p>Al confirmar recibirás tu código único <strong>JG-XXXXXX</strong>. Puedes ingresar el número de comprobante si ya transferiste o enviarlo luego por WhatsApp.</p>
+            <input id="co-transfer-ref" type="text" placeholder="Número de comprobante (opcional)" class="w-full px-3 py-1.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface text-xs">
+          </div>
+
+          <div id="pay-box-tarjeta" class="hidden p-3.5 rounded-DEFAULT bg-light-surface-variant dark:bg-dark-surface-variant border border-light-outline-variant dark:border-dark-outline text-xs space-y-2">
+            <p class="font-bold">Pre-autorización con Tarjeta de Crédito (Simulación Segura):</p>
+            <input id="co-card-holder" type="text" placeholder="Nombre en la tarjeta" class="w-full px-3 py-1.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface text-xs">
+            <div class="grid grid-cols-3 gap-2">
+              <input id="co-card-last4" type="text" maxlength="4" placeholder="Últimos 4 díg." class="px-3 py-1.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface text-xs">
+              <input type="text" maxlength="5" placeholder="MM/AA" class="px-3 py-1.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface text-xs">
+              <select class="px-2 py-1.5 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface text-xs">
+                <option>1 cuota</option>
+                <option>3 cuotas</option>
+                <option>6 cuotas</option>
+                <option>12 cuotas</option>
+              </select>
+            </div>
+            <p class="text-[11px] text-slate-500">*No almacenamos datos sensibles ni códigos de seguridad de tarjetas.</p>
+          </div>
+
+          <div id="pay-box-whatsapp" class="hidden p-3.5 rounded-DEFAULT bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs space-y-1">
+            <p class="font-bold text-emerald-800 dark:text-emerald-300">Confirmación Directa por WhatsApp (+57 311 443 6916)</p>
+            <p>Guardaremos tu solicitud y se abrirá WhatsApp con tu código de reserva listo para coordinar el pago y visita con un asesor.</p>
+          </div>
+
+          <textarea id="co-notes" rows="2" placeholder="Notas adicionales o fecha preferida de visita (opcional)" class="w-full px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-xs"></textarea>
+
+          <p id="checkout-error" class="text-xs text-red-600 font-semibold hidden"></p>
+
+          <button type="submit" id="checkout-submit-btn" class="w-full py-3.5 rounded-DEFAULT bg-accent text-white font-semibold text-sm hover:opacity-95 transition shadow-md">
+            Confirmar Separación (<span id="checkout-total-btn">$0</span>)
+          </button>
+        </form>
+
+        <!-- Pantalla de confirmación exitosa -->
+        <div id="checkout-success" class="hidden text-center space-y-4 py-4"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- MODAL DETALLE DE VIVIENDA                                  -->
+  <!-- ========================================================== -->
+  <div id="property-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div onclick="closePropertyModal()" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div id="property-modal-content" class="relative w-full max-w-2xl bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl border border-light-outline-variant dark:border-dark-outline-variant overflow-hidden max-h-[90vh] overflow-y-auto animate-fade-slide"></div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- MODAL CONSULTAR CÓDIGO DE RESERVA                          -->
+  <!-- ========================================================== -->
+  <div id="order-lookup-modal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
+    <div onclick="closeLookupModal()" class="absolute inset-0 bg-black/60 backdrop-blur-sm"></div>
+    <div class="relative w-full max-w-md bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl border border-light-outline-variant dark:border-dark-outline-variant p-6 animate-fade-slide">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-headline text-xl font-bold">Consultar Estado de Reserva</h3>
+        <button onclick="closeLookupModal()" type="button" class="w-8 h-8 rounded-full hover:bg-light-surface-variant dark:hover:bg-dark-surface-variant flex items-center justify-center">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <form onsubmit="lookupOrder(event)" class="flex gap-2 mb-4">
+        <input id="lookup-code-input" type="text" placeholder="Ej: JG-123456" required class="flex-1 px-3.5 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-white dark:bg-dark-surface-variant text-sm uppercase">
+        <button type="submit" class="px-4 py-2 rounded-DEFAULT bg-accent text-white text-sm font-semibold">Buscar</button>
+      </form>
+      <div id="lookup-result" class="text-sm"></div>
+    </div>
+  </div>
+
+  <!-- ========================================================== -->
+  <!-- CHAT FLOTANTE DE ASESORÍA (MINIMIZADO AL INICIO)           -->
+  <!-- ========================================================== -->
+  <aside id="chat-widget-container" class="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-40 flex flex-col items-end">
+    <div id="chat-window" class="hidden w-[330px] sm:w-[370px] h-[460px] bg-light-surface dark:bg-dark-surface rounded-2xl shadow-2xl border border-light-outline-variant dark:border-dark-outline-variant flex-col overflow-hidden mb-3">
+      <div class="bg-light-primary text-white p-3.5 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-full bg-accent text-white font-headline font-bold flex items-center justify-center">CR</div>
+          <div>
+            <h4 class="font-bold text-sm">Camila Restrepo · Asesora JG</h4>
+            <p class="text-[11px] text-emerald-300">En línea · Medellín y Bogotá</p>
+          </div>
+        </div>
+        <button onclick="toggleChatWindow()" type="button" class="w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center">
+          <span class="material-symbols-outlined text-[20px]">expand_more</span>
+        </button>
+      </div>
+
+      <div id="chat-messages" class="flex-1 p-4 overflow-y-auto space-y-3 bg-light-surface-variant/50 dark:bg-dark-surface-variant/40 text-sm">
+        <div class="bg-white dark:bg-dark-surface-variant p-3 rounded-xl border border-light-outline-variant dark:border-dark-outline">
+          ¡Hola! Soy Camila de <strong>JG Inmobiliaria</strong>. ¿Buscas vivienda en Medellín o Bogotá?
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button onclick="sendQuickReply('Busco apartamento en Medellín')" class="text-xs px-2.5 py-1 rounded-full border border-accent text-accent hover:bg-accent hover:text-white transition">Medellín</button>
+          <button onclick="sendQuickReply('Busco vivienda en Bogotá')" class="text-xs px-2.5 py-1 rounded-full border border-accent text-accent hover:bg-accent hover:text-white transition">Bogotá</button>
+          <button onclick="sendQuickReply('Quiero confirmar por WhatsApp')" class="text-xs px-2.5 py-1 rounded-full border border-emerald-600 text-emerald-700 dark:text-emerald-300">WhatsApp directo</button>
+        </div>
+      </div>
+
+      <form onsubmit="handleChatSubmit(event)" class="p-3 bg-white dark:bg-dark-surface border-t border-light-outline-variant dark:border-dark-outline-variant flex gap-2">
+        <input id="chat-input" type="text" placeholder="Escribe tu consulta..." required class="flex-1 px-3 py-2 rounded-DEFAULT border border-light-outline dark:border-dark-outline bg-light-surface dark:bg-dark-surface-variant text-xs">
+        <button type="submit" class="w-9 h-9 rounded-DEFAULT bg-light-primary text-white flex items-center justify-center">
+          <span class="material-symbols-outlined text-[18px]">send</span>
+        </button>
+      </form>
+    </div>
+
+    <button onclick="toggleChatWindow()" type="button" class="flex items-center gap-2.5 px-4 py-2.5 rounded-full bg-light-primary text-white shadow-xl border-2 border-accent hover:scale-105 transition">
+      <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+      <span class="text-xs font-bold hidden sm:inline">Asesoría en Línea</span>
+      <span class="material-symbols-outlined text-[20px]">forum</span>
+    </button>
+  </aside>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
+
