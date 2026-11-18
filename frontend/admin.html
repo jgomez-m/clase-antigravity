@@ -95,29 +95,53 @@
       ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
       <section id="section-dashboard" class="section active">
 
-        <!-- Filtro de fechas -->
+        <!-- Encabezado exclusivo para reporte impreso/PDF -->
+        <div class="print-header">
+          <div class="print-header-top">
+            <div>
+              <h1 class="print-brand">JG INMOBILIARIA</h1>
+              <p class="print-subtitle">Plataforma E-commerce y Gestión Inmobiliaria</p>
+            </div>
+            <div class="print-meta">
+              <div><strong>Informe:</strong> Reporte Ejecutivo de Ventas</div>
+              <div><strong>Fecha de emisión:</strong> <span id="print-date"></span></div>
+              <div><strong>Periodo:</strong> <span id="print-period">Histórico general</span></div>
+            </div>
+          </div>
+          <hr class="print-divider" />
+        </div>
+
+        <!-- Filtro de fechas personalizado -->
         <div class="date-filter">
-          <label>Desde</label>
-          <input type="date" id="filter-from" />
-          <span class="filter-sep">al</span>
-          <label>Hasta</label>
-          <input type="date" id="filter-to" />
+          <div class="filter-inputs">
+            <label for="filter-from">Desde:</label>
+            <input type="date" id="filter-from" />
+            <span class="filter-sep">al</span>
+            <label for="filter-to">Hasta:</label>
+            <input type="date" id="filter-to" />
+          </div>
           <div class="shortcut-btns">
             <button class="btn-shortcut" data-shortcut="today">Hoy</button>
             <button class="btn-shortcut" data-shortcut="week">Esta semana</button>
             <button class="btn-shortcut" data-shortcut="month">Este mes</button>
+            <button class="btn-shortcut" data-shortcut="quarter">Trimestre</button>
             <button class="btn-shortcut" data-shortcut="year">Este año</button>
-            <button class="btn-shortcut" data-shortcut="clear">Limpiar</button>
+            <button class="btn-shortcut" data-shortcut="all">Histórico</button>
           </div>
-          <button class="btn btn-primary btn-sm" id="btn-apply-filter">Aplicar</button>
+          <button class="btn btn-primary btn-sm" id="btn-apply-filter">🔍 Filtrar Periodo</button>
         </div>
 
-        <!-- KPI Cards -->
+        <!-- KPI Cards Gerenciales -->
         <div class="kpi-grid">
           <div class="kpi-card">
             <div class="kpi-icon">💰</div>
-            <div class="kpi-label">Ingresos del periodo</div>
-            <div class="kpi-value" id="kpi-income">$0</div>
+            <div class="kpi-label">Ventas del periodo</div>
+            <div class="kpi-value" id="kpi-income">$0 COP</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-icon">🏷️</div>
+            <div class="kpi-label">Ticket Promedio</div>
+            <div class="kpi-value" id="kpi-avg-ticket">$0 COP</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-icon">📋</div>
@@ -125,49 +149,44 @@
             <div class="kpi-value" id="kpi-total-res">0</div>
           </div>
           <div class="kpi-card">
-            <div class="kpi-icon">✅</div>
-            <div class="kpi-label">Aprobadas</div>
-            <div class="kpi-value" id="kpi-approved">0</div>
-          </div>
-          <div class="kpi-card">
-            <div class="kpi-icon">📈</div>
-            <div class="kpi-label">Conversión</div>
+            <div class="kpi-icon">🎯</div>
+            <div class="kpi-label">Tasa de Conversión</div>
             <div class="kpi-value"><span id="kpi-conversion">0</span>%</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-icon">🏠</div>
-            <div class="kpi-label">Inmuebles activos</div>
+            <div class="kpi-label">Inmuebles disponibles</div>
             <div class="kpi-value" id="kpi-active-props">0</div>
           </div>
           <div class="kpi-card">
             <div class="kpi-icon">💬</div>
-            <div class="kpi-label">Msgs sin atender</div>
+            <div class="kpi-label">Mensajes pendientes</div>
             <div class="kpi-value" id="kpi-inquiries">0</div>
           </div>
         </div>
 
         <!-- Acciones de reporte -->
         <div class="report-actions">
-          <button class="btn btn-secondary" id="btn-csv">📥 Descargar CSV</button>
-          <button class="btn btn-outline" id="btn-print">🖨️ Imprimir Reporte</button>
+          <button class="btn btn-secondary" id="btn-csv" title="Descargar reporte en formato Excel / CSV">📥 Descargar Reporte CSV</button>
+          <button class="btn btn-outline" id="btn-print" title="Imprimir o guardar como PDF">🖨️ Imprimir Reporte Ejecutivo (PDF)</button>
         </div>
 
-        <!-- Gráficas -->
+        <!-- Gráficas Gerenciales -->
         <div class="charts-grid">
           <div class="chart-card">
-            <h3>Ingresos por Mes</h3>
+            <h3>📈 Evolución de Ingresos y Ventas ($ COP)</h3>
             <canvas id="chart-monthly"></canvas>
           </div>
           <div class="chart-card">
-            <h3>Venta vs Arriendo</h3>
+            <h3>🍩 Mezcla de Cartera (Venta vs Arriendo)</h3>
             <canvas id="chart-dist"></canvas>
           </div>
           <div class="chart-card">
-            <h3>Cotizaciones por Semana</h3>
-            <canvas id="chart-weekly"></canvas>
+            <h3>🏙️ Demanda por Plaza (Medellín vs Bogotá)</h3>
+            <canvas id="chart-city"></canvas>
           </div>
           <div class="chart-card">
-            <h3>Top Inmuebles Cotizados</h3>
+            <h3>🏆 Top 5 Inmuebles Más Demandados</h3>
             <canvas id="chart-top"></canvas>
           </div>
         </div>

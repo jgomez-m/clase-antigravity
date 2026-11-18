@@ -572,7 +572,7 @@ class JGRequestHandler(BaseHTTPRequestHandler):
         date_to = (query.get("to", [""])[0] or "").strip()
 
         with get_connection(self.settings.db_path) as conn:
-            # KPIs generales
+            # KPIs generales de catálogo
             total_props = conn.execute("SELECT COUNT(*) FROM properties").fetchone()[0]
             avail_props = conn.execute("SELECT COUNT(*) FROM properties WHERE status = 'disponible'").fetchone()[0]
             reserved_props = conn.execute("SELECT COUNT(*) FROM properties WHERE status = 'reservado'").fetchone()[0]
@@ -600,7 +600,7 @@ class JGRequestHandler(BaseHTTPRequestHandler):
                 date_params
             ).fetchone()[0]
             approved_res = conn.execute(
-                f"SELECT COUNT(*) FROM reservations {date_clause + (' AND' if date_clause else 'WHERE')} status = 'aprobado'",
+                f"SELECT COUNT(*) FROM reservations {date_clause + (' AND' if date_clause else 'WHERE')} status IN ('aprobado','cerrado')",
                 date_params
             ).fetchone()[0]
             total_income = conn.execute(
@@ -609,63 +609,127 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             ).fetchone()[0]
 
             conversion_rate = round((approved_res / total_res * 100) if total_res > 0 else 0, 1)
+            average_ticket = round(total_income / approved_res) if approved_res > 0 else 0
 
-            # Gráfica 1: Ingresos por mes (últimos 6 meses)
-            monthly_income = conn.execute("""
+            # Gráfica 1: Ingresos por mes (últimos 6 meses o periodo)
+            m_clause = date_clause if date_clause else "WHERE created_at >= date('now', '-6 months')"
+            m_params = date_params if date_clause else []
+            monthly_income = conn.execute(f"""
                 SELECT strftime('%Y-%m', created_at) AS month,
                        COALESCE(SUM(total_amount), 0) AS total
                 FROM reservations
-                WHERE status IN ('aprobado','cerrado')
-                  AND created_at >= date('now', '-6 months')
+                {m_clause + (' AND' if m_clause else 'WHERE')} status IN ('aprobado','cerrado')
                 GROUP BY month ORDER BY month ASC
-            """).fetchall()
+            """, m_params).fetchall()
 
             # Gráfica 2: Distribución venta vs arriendo
+            r_prefix_clause = ""
+            if date_from and date_to:
+                r_prefix_clause = "WHERE DATE(r.created_at) BETWEEN ? AND ?"
+            elif date_from:
+                r_prefix_clause = "WHERE DATE(r.created_at) >= ?"
+            elif date_to:
+                r_prefix_clause = "WHERE DATE(r.created_at) <= ?"
+
             dist_venta = conn.execute(
-                "SELECT COUNT(*) FROM reservations r JOIN reservation_items ri ON ri.reservation_id = r.id WHERE ri.operation = 'venta'"
+                f"""SELECT COUNT(*) FROM reservations r
+                   JOIN reservation_items ri ON ri.reservation_id = r.id
+                   {r_prefix_clause + (' AND' if r_prefix_clause else 'WHERE')} ri.operation = 'venta'""",
+                date_params
             ).fetchone()[0]
             dist_arriendo = conn.execute(
-                "SELECT COUNT(*) FROM reservations r JOIN reservation_items ri ON ri.reservation_id = r.id WHERE ri.operation = 'arriendo'"
+                f"""SELECT COUNT(*) FROM reservations r
+                   JOIN reservation_items ri ON ri.reservation_id = r.id
+                   {r_prefix_clause + (' AND' if r_prefix_clause else 'WHERE')} ri.operation = 'arriendo'""",
+                date_params
             ).fetchone()[0]
 
-            # Gráfica 3: Cotizaciones por semana (últimas 8 semanas)
-            weekly_res = conn.execute("""
-                SELECT strftime('%Y-W%W', created_at) AS week,
-                       COUNT(*) AS total
-                FROM reservations
-                WHERE created_at >= date('now', '-56 days')
-                GROUP BY week ORDER BY week ASC
-            """).fetchall()
+            # Gráfica 3: Demanda y Ventas por Ciudad (Medellín vs Bogotá)
+            city_rows = conn.execute(f"""
+                SELECT p.city, COUNT(DISTINCT r.id) AS cnt,
+                       COALESCE(SUM(CASE WHEN r.status IN ('aprobado','cerrado') THEN r.total_amount ELSE 0 END), 0) AS total_val
+                FROM reservations r
+                JOIN reservation_items ri ON ri.reservation_id = r.id
+                JOIN properties p ON p.id = ri.property_id
+                {r_prefix_clause}
+                GROUP BY p.city
+            """, date_params).fetchall()
 
-            # Gráfica 4: Top inmuebles más cotizados
-            top_props = conn.execute("""
+            med_count = sum(r["cnt"] for r in city_rows if "medell" in str(r["city"]).lower())
+            bog_count = sum(r["cnt"] for r in city_rows if "bogot" in str(r["city"]).lower())
+            med_income = sum(r["total_val"] for r in city_rows if "medell" in str(r["city"]).lower())
+            bog_income = sum(r["total_val"] for r in city_rows if "bogot" in str(r["city"]).lower())
+
+            # Gráfica 4: Top inmuebles más demandados
+            top_props = conn.execute(f"""
                 SELECT p.title, COUNT(ri.id) AS cnt
                 FROM reservation_items ri
                 JOIN properties p ON p.id = ri.property_id
+                JOIN reservations r ON r.id = ri.reservation_id
+                {r_prefix_clause}
                 GROUP BY ri.property_id
                 ORDER BY cnt DESC LIMIT 5
-            """).fetchall()
+            """, date_params).fetchall()
 
-        self._send_json(200, {
-            "stats": {
-                "total_properties": total_props,
-                "available_properties": avail_props,
-                "reserved_properties": reserved_props,
-                "closed_properties": closed_props,
-                "total_reservations": total_res,
-                "pending_reservations": pending_res,
-                "approved_reservations": approved_res,
-                "total_income_cop": total_income,
-                "conversion_rate": conversion_rate,
-                "new_inquiries": new_inquiries,
+            # Gráfica 5: Cotizaciones por semana
+            w_clause = date_clause if date_clause else "WHERE created_at >= date('now', '-56 days')"
+            w_params = date_params if date_clause else []
+            weekly_res = conn.execute(f"""
+                SELECT strftime('%Y-W%W', created_at) AS week,
+                       COUNT(*) AS total
+                FROM reservations
+                {w_clause}
+                GROUP BY week ORDER BY week ASC
+            """, w_params).fetchall()
+
+        charts_data = {
+            "monthly_income": {
+                "labels": [r["month"] for r in monthly_income],
+                "values": [r["total"] for r in monthly_income],
             },
-            "charts": {
-                "monthly_income": [{"month": r["month"], "total": r["total"]} for r in monthly_income],
-                "operation_dist": {"venta": dist_venta, "arriendo": dist_arriendo},
-                "weekly_reservations": [{"week": r["week"], "total": r["total"]} for r in weekly_res],
-                "top_properties": [{"title": r["title"], "count": r["cnt"]} for r in top_props],
-            }
-        })
+            "operation_distribution": {
+                "venta": dist_venta,
+                "arriendo": dist_arriendo,
+            },
+            "operation_dist": {
+                "venta": dist_venta,
+                "arriendo": dist_arriendo,
+            },
+            "city_distribution": {
+                "labels": ["Medellín", "Bogotá"],
+                "values": [med_count, bog_count],
+                "income": [med_income, bog_income],
+            },
+            "top_properties": {
+                "labels": [r["title"] for r in top_props],
+                "values": [r["cnt"] for r in top_props],
+            },
+            "weekly_reservations": {
+                "labels": [r["week"] for r in weekly_res],
+                "values": [r["total"] for r in weekly_res],
+            },
+        }
+
+        stats_data = {
+            "total_properties": total_props,
+            "available_properties": avail_props,
+            "reserved_properties": reserved_props,
+            "closed_properties": closed_props,
+            "total_reservations": total_res,
+            "pending_reservations": pending_res,
+            "approved_reservations": approved_res,
+            "total_income_cop": total_income,
+            "total_income": total_income,
+            "average_ticket": average_ticket,
+            "conversion_rate": conversion_rate,
+            "new_inquiries": new_inquiries,
+        }
+
+        response_payload = dict(stats_data)
+        response_payload["stats"] = stats_data
+        response_payload["charts"] = charts_data
+
+        self._send_json(200, response_payload)
 
     def _validate_property_payload(self, data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         title = str(data.get("title", "")).strip()
@@ -976,10 +1040,14 @@ class JGRequestHandler(BaseHTTPRequestHandler):
                 GROUP BY day ORDER BY day ASC LIMIT 30
             """, date_params).fetchall()
 
+        by_device_dict = {r["device"]: r["cnt"] for r in by_device}
+
         self._send_json(200, {
             "total_visits": total_visits,
+            "total": total_visits,
             "by_page": [{"page": r["page"], "count": r["cnt"]} for r in by_page],
-            "by_device": [{"device": r["device"], "count": r["cnt"]} for r in by_device],
+            "by_device": by_device_dict,
+            "devices_list": [{"device": r["device"], "count": r["cnt"]} for r in by_device],
             "daily": [{"day": r["day"], "count": r["cnt"]} for r in daily],
         })
 

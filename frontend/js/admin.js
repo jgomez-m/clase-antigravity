@@ -136,8 +136,9 @@ function bindStaticEvents() {
   document.getElementById('sidebar-overlay').addEventListener('click', closeSidebar);
 
   // Filtros de fecha — atajos
+  // Filtro de fechas y atajos
   document.querySelectorAll('.btn-shortcut').forEach(btn => {
-    btn.addEventListener('click', () => applyShortcut(btn.dataset.shortcut));
+    btn.addEventListener('click', (e) => applyShortcut(btn.dataset.shortcut, e.currentTarget));
   });
   document.getElementById('btn-apply-filter').addEventListener('click', applyFilter);
 
@@ -245,19 +246,12 @@ function closeSidebar() {
 /* ============================================================
    FILTROS DE FECHA
    ============================================================ */
-function applyShortcut(shortcut) {
+function applyShortcut(shortcut, btnElement) {
   const today = new Date();
-  let from, to;
+  let from = '', to = '';
 
   document.querySelectorAll('.btn-shortcut').forEach(b => b.classList.remove('active-shortcut'));
-
-  if (shortcut === 'clear') {
-    document.getElementById('filter-from').value = '';
-    document.getElementById('filter-to').value   = '';
-    filterFrom = '';
-    filterTo   = '';
-    return;
-  }
+  if (btnElement) btnElement.classList.add('active-shortcut');
 
   to = toISODate(today);
 
@@ -265,17 +259,29 @@ function applyShortcut(shortcut) {
     from = to;
   } else if (shortcut === 'week') {
     const d = new Date(today);
-    d.setDate(d.getDate() - d.getDay());
+    const day = d.getDay();
+    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+    d.setDate(diff);
     from = toISODate(d);
   } else if (shortcut === 'month') {
     from = toISODate(new Date(today.getFullYear(), today.getMonth(), 1));
+  } else if (shortcut === 'quarter') {
+    const currentQuarter = Math.floor(today.getMonth() / 3);
+    from = toISODate(new Date(today.getFullYear(), currentQuarter * 3, 1));
   } else if (shortcut === 'year') {
     from = toISODate(new Date(today.getFullYear(), 0, 1));
+  } else if (shortcut === 'all' || shortcut === 'clear') {
+    from = '';
+    to = '';
   }
 
   document.getElementById('filter-from').value = from;
   document.getElementById('filter-to').value   = to;
-  event.currentTarget && event.currentTarget.classList.add('active-shortcut');
+  filterFrom = from;
+  filterTo   = to;
+
+  loadDashboard();
+  if (currentSection === 'visitas') loadVisits();
 }
 
 function toISODate(d) {
@@ -297,20 +303,50 @@ async function loadDashboard() {
   if (filterFrom) params.set('from', filterFrom);
   if (filterTo)   params.set('to',   filterTo);
 
+  // Metadatos para reporte imprimible / PDF
+  const printDateEl = document.getElementById('print-date');
+  if (printDateEl) {
+    printDateEl.textContent = new Date().toLocaleDateString('es-CO', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  const printPeriodEl = document.getElementById('print-period');
+  if (printPeriodEl) {
+    if (filterFrom && filterTo) {
+      printPeriodEl.textContent = `${filterFrom} al ${filterTo}`;
+    } else if (filterFrom) {
+      printPeriodEl.textContent = `Desde ${filterFrom}`;
+    } else if (filterTo) {
+      printPeriodEl.textContent = `Hasta ${filterTo}`;
+    } else {
+      printPeriodEl.textContent = 'Histórico consolidado (General)';
+    }
+  }
+
   try {
     const res  = await apiFetch(`/api/admin/dashboard?${params}`);
     if (!res.ok) return;
     const data = await res.json();
+    const stats = data.stats || data;
 
-    // KPIs
-    document.getElementById('kpi-income').textContent      = formatCOP(data.total_income || 0);
-    document.getElementById('kpi-total-res').textContent   = data.total_reservations ?? 0;
-    document.getElementById('kpi-approved').textContent    = data.approved_reservations ?? 0;
-    document.getElementById('kpi-conversion').textContent  = data.conversion_rate ?? 0;
-    document.getElementById('kpi-active-props').textContent= data.available_properties ?? 0;
-    document.getElementById('kpi-inquiries').textContent   = data.new_inquiries ?? 0;
+    // Actualización de KPIs
+    const incEl = document.getElementById('kpi-income');
+    if (incEl) incEl.textContent = formatCOP(stats.total_income_cop ?? stats.total_income ?? 0);
 
-    // Charts
+    const ticketEl = document.getElementById('kpi-avg-ticket');
+    if (ticketEl) ticketEl.textContent = formatCOP(stats.average_ticket ?? 0);
+
+    const resEl = document.getElementById('kpi-total-res');
+    if (resEl) resEl.textContent = stats.total_reservations ?? 0;
+
+    const convEl = document.getElementById('kpi-conversion');
+    if (convEl) convEl.textContent = stats.conversion_rate ?? 0;
+
+    const propsEl = document.getElementById('kpi-active-props');
+    if (propsEl) propsEl.textContent = stats.available_properties ?? 0;
+
+    const inqEl = document.getElementById('kpi-inquiries');
+    if (inqEl) inqEl.textContent = stats.new_inquiries ?? 0;
+
+    // Render de Charts
     if (data.charts) renderCharts(data.charts);
   } catch (err) {
     console.error('loadDashboard error:', err);
@@ -318,93 +354,118 @@ async function loadDashboard() {
 }
 
 function renderCharts(chartData) {
-  // Destruir charts previos
-  ['chart-monthly','chart-dist','chart-weekly','chart-top'].forEach(id => {
+  // Destruir instancias previas
+  ['chart-monthly','chart-dist','chart-city','chart-top'].forEach(id => {
     if (charts[id]) { charts[id].destroy(); delete charts[id]; }
   });
 
   // 1. Ingresos por mes — Bar
   const monthly = chartData.monthly_income || { labels: [], values: [] };
-  charts['chart-monthly'] = new Chart(
-    document.getElementById('chart-monthly').getContext('2d'),
-    {
+  const monthlyLabels = (monthly.labels && monthly.labels.length) ? monthly.labels : ['Sin registros'];
+  const monthlyValues = (monthly.values && monthly.values.length) ? monthly.values.map(v => +(v / 1_000_000).toFixed(2)) : [0];
+
+  const ctxMonthly = document.getElementById('chart-monthly');
+  if (ctxMonthly) {
+    charts['chart-monthly'] = new Chart(ctxMonthly.getContext('2d'), {
       type: 'bar',
       data: {
-        labels: monthly.labels || [],
+        labels: monthlyLabels,
         datasets: [{
-          label: 'Ingresos (millones COP)',
-          data: (monthly.values || []).map(v => +(v / 1_000_000).toFixed(2)),
-          backgroundColor: 'rgba(26,35,126,.75)',
+          label: 'Ventas (Millones COP)',
+          data: monthlyValues,
+          backgroundColor: 'rgba(26, 35, 126, 0.85)',
+          borderColor: '#1a237e',
+          borderWidth: 1,
+          borderRadius: 6,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (ctx) => ` Ingresos: $${ctx.raw}M COP`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { callback: v => '$' + v + 'M' }
+          }
+        },
+      },
+    });
+  }
+
+  // 2. Venta vs Arriendo — Doughnut
+  const dist = chartData.operation_distribution || chartData.operation_dist || { venta: 0, arriendo: 0 };
+  const ctxDist = document.getElementById('chart-dist');
+  if (ctxDist) {
+    const hasDistData = (dist.venta || 0) + (dist.arriendo || 0) > 0;
+    charts['chart-dist'] = new Chart(ctxDist.getContext('2d'), {
+      type: 'doughnut',
+      data: {
+        labels: hasDistData ? ['Venta', 'Arriendo'] : ['Sin cotizaciones'],
+        datasets: [{
+          data: hasDistData ? [dist.venta || 0, dist.arriendo || 0] : [1],
+          backgroundColor: hasDistData ? ['#1a237e', '#c9a84c'] : ['#e2e8f0'],
+          borderWidth: 2,
+        }],
+      },
+      options: {
+        responsive: true,
+        plugins: {
+          legend: { position: 'bottom' },
+        },
+      },
+    });
+  }
+
+  // 3. Demanda por Ciudad (Medellín vs Bogotá) — Bar
+  const city = chartData.city_distribution || { labels: ['Medellín', 'Bogotá'], values: [0, 0] };
+  const ctxCity = document.getElementById('chart-city');
+  if (ctxCity) {
+    charts['chart-city'] = new Chart(ctxCity.getContext('2d'), {
+      type: 'bar',
+      data: {
+        labels: city.labels || ['Medellín', 'Bogotá'],
+        datasets: [{
+          label: 'Cotizaciones recibidas',
+          data: city.values || [0, 0],
+          backgroundColor: ['rgba(26, 35, 126, 0.85)', 'rgba(201, 168, 76, 0.85)'],
           borderRadius: 6,
         }],
       },
       options: {
         responsive: true,
         plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { callback: v => '$' + v + 'M' } } },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: { stepSize: 1 }
+          }
+        },
       },
-    }
-  );
+    });
+  }
 
-  // 2. Venta vs Arriendo — Doughnut
-  const dist = chartData.operation_distribution || { venta: 0, arriendo: 0 };
-  charts['chart-dist'] = new Chart(
-    document.getElementById('chart-dist').getContext('2d'),
-    {
-      type: 'doughnut',
-      data: {
-        labels: ['Venta', 'Arriendo'],
-        datasets: [{
-          data: [dist.venta || 0, dist.arriendo || 0],
-          backgroundColor: ['#1a237e', '#c9a84c'],
-          borderWidth: 2,
-        }],
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { position: 'bottom' } },
-      },
-    }
-  );
-
-  // 3. Cotizaciones por semana — Line
-  const weekly = chartData.weekly_reservations || { labels: [], values: [] };
-  charts['chart-weekly'] = new Chart(
-    document.getElementById('chart-weekly').getContext('2d'),
-    {
-      type: 'line',
-      data: {
-        labels: weekly.labels || [],
-        datasets: [{
-          label: 'Cotizaciones',
-          data: weekly.values || [],
-          borderColor: '#1a237e',
-          backgroundColor: 'rgba(26,35,126,.10)',
-          tension: 0.4,
-          fill: true,
-          pointRadius: 4,
-        }],
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
-      },
-    }
-  );
-
-  // 4. Top inmuebles — Bar horizontal
+  // 4. Top 5 Inmuebles más demandados — Bar horizontal
   const top = chartData.top_properties || { labels: [], values: [] };
-  charts['chart-top'] = new Chart(
-    document.getElementById('chart-top').getContext('2d'),
-    {
+  const topLabels = (top.labels && top.labels.length) ? top.labels : ['Sin cotizaciones'];
+  const topValues = (top.values && top.values.length) ? top.values : [0];
+
+  const ctxTop = document.getElementById('chart-top');
+  if (ctxTop) {
+    charts['chart-top'] = new Chart(ctxTop.getContext('2d'), {
       type: 'bar',
       data: {
-        labels: top.labels || [],
+        labels: topLabels,
         datasets: [{
           label: 'Cotizaciones',
-          data: top.values || [],
-          backgroundColor: 'rgba(201,168,76,.8)',
+          data: topValues,
+          backgroundColor: 'rgba(201, 168, 76, 0.85)',
           borderRadius: 4,
         }],
       },
@@ -412,10 +473,15 @@ function renderCharts(chartData) {
         indexAxis: 'y',
         responsive: true,
         plugins: { legend: { display: false } },
-        scales: { x: { beginAtZero: true, ticks: { stepSize: 1 } } },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: { stepSize: 1 }
+          }
+        },
       },
-    }
-  );
+    });
+  }
 }
 
 /* ============================================================
@@ -446,70 +512,85 @@ async function loadVisits() {
     const data = await res.json();
 
     // KPIs
-    document.getElementById('kpi-total-visits').textContent = data.total || 0;
-    document.getElementById('kpi-mobile').textContent       = data.by_device?.mobile  || 0;
-    document.getElementById('kpi-desktop').textContent      = data.by_device?.desktop || 0;
-    document.getElementById('kpi-tablet').textContent       = data.by_device?.tablet  || 0;
+    const totalVisits = data.total_visits ?? data.total ?? 0;
+    document.getElementById('kpi-total-visits').textContent = totalVisits;
 
-    // Tabla páginas
-    const tbody = document.getElementById('tbody-pages');
-    const pages = data.by_page || [];
-    if (pages.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--text-muted);padding:20px;">Sin datos</td></tr>';
-    } else {
-      tbody.innerHTML = pages.map(p =>
-        `<tr><td>${escapeHTML(p.page)}</td><td>${p.count}</td></tr>`
-      ).join('');
+    const byDevice = data.by_device || {};
+    document.getElementById('kpi-mobile').textContent  = byDevice.mobile || 0;
+    document.getElementById('kpi-desktop').textContent = byDevice.desktop || 0;
+    document.getElementById('kpi-tablet').textContent  = byDevice.tablet || 0;
+
+    // Gráfica de visitas diarias
+    if (data.daily && document.getElementById('chart-daily-visits')) {
+      if (charts['chart-daily-visits']) {
+        charts['chart-daily-visits'].destroy();
+        delete charts['chart-daily-visits'];
+      }
+      const days = data.daily.map(d => d.day);
+      const counts = data.daily.map(d => d.count);
+      charts['chart-daily-visits'] = new Chart(
+        document.getElementById('chart-daily-visits').getContext('2d'),
+        {
+          type: 'line',
+          data: {
+            labels: days.length ? days : ['Hoy'],
+            datasets: [{
+              label: 'Visitas',
+              data: counts.length ? counts : [totalVisits],
+              borderColor: '#1a237e',
+              backgroundColor: 'rgba(26, 35, 126, 0.1)',
+              tension: 0.3,
+              fill: true,
+              pointRadius: 4,
+            }],
+          },
+          options: {
+            responsive: true,
+            plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } },
+          },
+        }
+      );
     }
 
-    // Dona dispositivos
-    if (charts['chart-devices']) { charts['chart-devices'].destroy(); delete charts['chart-devices']; }
-    if (charts['chart-daily-visits']) { charts['chart-daily-visits'].destroy(); delete charts['chart-daily-visits']; }
+    // Tabla de páginas más visitadas
+    const tbodyPages = document.getElementById('tbody-pages');
+    if (tbodyPages && data.by_page) {
+      if (data.by_page.length === 0) {
+        tbodyPages.innerHTML = '<tr><td colspan="2" style="text-align:center;color:var(--text-muted);padding:15px;">Sin visitas registradas</td></tr>';
+      } else {
+        tbodyPages.innerHTML = data.by_page.map(p => `
+          <tr>
+            <td><code>${escapeHTML(p.page)}</code></td>
+            <td style="font-weight:600;">${p.count}</td>
+          </tr>
+        `).join('');
+      }
+    }
 
-    const devData = data.by_device || {};
-    charts['chart-devices'] = new Chart(
-      document.getElementById('chart-devices').getContext('2d'),
-      {
+    // Dona de dispositivos
+    const ctxDevices = document.getElementById('chart-devices');
+    if (ctxDevices) {
+      if (charts['chart-devices']) {
+        charts['chart-devices'].destroy();
+        delete charts['chart-devices'];
+      }
+      charts['chart-devices'] = new Chart(ctxDevices.getContext('2d'), {
         type: 'doughnut',
         data: {
-          labels: ['Desktop', 'Móvil', 'Tablet'],
+          labels: ['Móvil', 'Desktop', 'Tablet'],
           datasets: [{
-            data: [devData.desktop || 0, devData.mobile || 0, devData.tablet || 0],
-            backgroundColor: ['#1a237e', '#c9a84c', '#0288d1'],
+            data: [byDevice.mobile || 0, byDevice.desktop || 0, byDevice.tablet || 0],
+            backgroundColor: ['#c9a84c', '#1a237e', '#0288d1'],
+            borderWidth: 2,
           }],
         },
         options: {
           responsive: true,
           plugins: { legend: { position: 'bottom' } },
         },
-      }
-    );
-
-    // Gráfica diaria
-    const daily = data.daily || { labels: [], values: [] };
-    charts['chart-daily-visits'] = new Chart(
-      document.getElementById('chart-daily-visits').getContext('2d'),
-      {
-        type: 'line',
-        data: {
-          labels: daily.labels || [],
-          datasets: [{
-            label: 'Visitas',
-            data: daily.values || [],
-            borderColor: '#1a237e',
-            backgroundColor: 'rgba(26,35,126,.10)',
-            tension: 0.4,
-            fill: true,
-          }],
-        },
-        options: {
-          responsive: true,
-          plugins: { legend: { display: false } },
-          scales: { y: { beginAtZero: true } },
-        },
-      }
-    );
-
+      });
+    }
   } catch (err) {
     console.error('loadVisits error:', err);
   }
