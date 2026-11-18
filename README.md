@@ -35,3 +35,9 @@ python3 backend/server.py
 cd backend && python3 -m unittest tests -v
 ```
 
+
+## Estilos de la tienda (Tailwind)
+La tienda usa `frontend/css/tailwind.css`, ya compilado y versionado (no depende de ningún CDN). Si agregas clases nuevas en `index.html` o `app.js`, recompílalo:
+```bash
+cd tailwind && npm i tailwindcss@3 @tailwindcss/forms @tailwindcss/container-queries && npx tailwindcss -c tailwind.config.js -i input.css -o ../frontend/css/tailwind.css --minify
+```
