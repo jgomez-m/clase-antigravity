@@ -68,6 +68,9 @@
           <span class="nav-icon">💬</span> Mensajes
           <span class="nav-badge hidden" id="badge-mensajes">0</span>
         </a>
+        <a href="#" data-section="agente">
+          <span class="nav-icon">🤖</span> Agente IA
+        </a>
       </nav>
 
       <div class="sidebar-footer">
@@ -464,6 +467,166 @@
               <tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:20px;">Cargando...</td></tr>
             </tbody>
           </table>
+        </div>
+      </section>
+
+      <!-- ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+           SECCIÓN 6: AGENTE IA
+      ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ -->
+      <section id="section-agente" class="section">
+        <div class="section-header">
+          <h2>🤖 Agente IA</h2>
+          <span id="agent-status-pill" class="agent-pill agent-pill-off">Inactivo</span>
+        </div>
+
+        <div class="agent-grid">
+          <!-- Configuración del LLM -->
+          <div class="agent-card">
+            <h3>⚙️ Configuración del modelo</h3>
+            <form id="form-agent-config" autocomplete="off">
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="agent-provider">Proveedor</label>
+                  <select id="agent-provider"></select>
+                </div>
+                <div class="form-group">
+                  <label for="agent-model">Modelo</label>
+                  <input type="text" id="agent-model" list="agent-model-options" placeholder="gpt-4o-mini" />
+                  <datalist id="agent-model-options"></datalist>
+                </div>
+              </div>
+              <div class="form-row single">
+                <div class="form-group">
+                  <label for="agent-api-key">API Key</label>
+                  <input type="password" id="agent-api-key" placeholder="Sin API key configurada" autocomplete="new-password" />
+                  <small class="field-hint" id="agent-key-hint">La clave se guarda cifrada y nunca se vuelve a mostrar completa.</small>
+                </div>
+              </div>
+              <div class="form-row">
+                <div class="form-group">
+                  <label for="agent-temperature">Temperatura: <span id="agent-temperature-value">0.7</span></label>
+                  <input type="range" id="agent-temperature" min="0" max="1" step="0.1" value="0.7" />
+                </div>
+                <div class="form-group">
+                  <label for="agent-max-tokens">Máximo de tokens</label>
+                  <input type="number" id="agent-max-tokens" min="64" max="8192" step="1" value="1024" />
+                </div>
+              </div>
+              <div class="form-row single">
+                <div class="form-group">
+                  <label for="agent-system-prompt">Prompt de sistema</label>
+                  <textarea id="agent-system-prompt" rows="9"></textarea>
+                  <button type="button" class="btn btn-outline btn-xs" id="btn-agent-reset-prompt" style="align-self:flex-start;">Restaurar prompt por defecto</button>
+                </div>
+              </div>
+              <label class="toggle-row">
+                <input type="checkbox" id="agent-active" />
+                <span>Agente activo en la web pública</span>
+              </label>
+              <p class="agent-msg" id="agent-config-msg"></p>
+              <div class="agent-actions">
+                <button type="submit" class="btn btn-primary">💾 Guardar configuración</button>
+                <button type="button" class="btn btn-outline btn-sm hidden" id="btn-agent-clear-key">Eliminar API key</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Chat de prueba -->
+          <div class="agent-card agent-test-card">
+            <h3>💬 Chat de prueba</h3>
+            <p class="field-hint">Usa la configuración guardada, aunque el agente esté inactivo en la web.</p>
+            <div id="agent-test-messages" class="agent-test-messages"></div>
+            <form id="form-agent-test" class="agent-test-form">
+              <input type="text" id="agent-test-input" placeholder="Pregunta algo al agente..." maxlength="1000" required />
+              <button type="submit" class="btn btn-primary btn-sm">Enviar</button>
+            </form>
+            <button type="button" class="btn btn-outline btn-xs" id="btn-agent-test-clear" style="margin-top:8px;align-self:flex-start;">Reiniciar conversación</button>
+          </div>
+        </div>
+
+        <!-- Base de conocimiento -->
+        <div class="agent-card">
+          <h3>📚 Base de conocimiento</h3>
+          <p class="field-hint">El inventario de inmuebles disponibles se incluye automáticamente. Agrega aquí FAQ, políticas, horarios, requisitos y otra información del negocio.</p>
+
+          <div class="knowledge-forms">
+            <form id="form-knowledge-text" class="knowledge-form">
+              <h4>✍️ Texto libre</h4>
+              <div class="form-group">
+                <label for="kn-text-title">Título</label>
+                <input type="text" id="kn-text-title" maxlength="200" placeholder="Ej: Requisitos para arrendar" required />
+              </div>
+              <div class="form-group">
+                <label for="kn-text-content">Contenido</label>
+                <textarea id="kn-text-content" rows="5" placeholder="Escribe la información..." required></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm">+ Agregar texto</button>
+            </form>
+
+            <form id="form-knowledge-file" class="knowledge-form">
+              <h4>📎 PDF o imagen</h4>
+              <div class="form-group">
+                <label for="kn-file-title">Título</label>
+                <input type="text" id="kn-file-title" maxlength="200" placeholder="Ej: Brochure Penthouse Skyview" />
+              </div>
+              <div class="form-group">
+                <label for="kn-file-input">Archivo (PDF, PNG, JPG, WEBP, GIF · máx. 8 MB)</label>
+                <input type="file" id="kn-file-input" accept="application/pdf,image/png,image/jpeg,image/webp,image/gif" required />
+              </div>
+              <div class="form-group">
+                <label for="kn-file-description">Descripción (obligatoria para imágenes)</label>
+                <textarea id="kn-file-description" rows="2" placeholder="Qué muestra el archivo y qué debe saber el agente"></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary btn-sm" id="btn-kn-upload">⬆️ Subir archivo</button>
+            </form>
+          </div>
+          <p class="agent-msg" id="knowledge-msg"></p>
+
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Título</th>
+                  <th>Tipo</th>
+                  <th>Contenido</th>
+                  <th>Fecha</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tbody-knowledge">
+                <tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">Cargando...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- MODAL EDITAR ENTRADA -->
+        <div id="modal-knowledge" class="modal hidden">
+          <div class="modal-box">
+            <div class="modal-header">
+              <h3>Editar entrada de conocimiento</h3>
+              <button class="modal-close" id="modal-knowledge-close">✕</button>
+            </div>
+            <div class="modal-body">
+              <div class="form-row single">
+                <div class="form-group">
+                  <label for="kn-edit-title">Título</label>
+                  <input type="text" id="kn-edit-title" maxlength="200" />
+                </div>
+              </div>
+              <div class="form-row single">
+                <div class="form-group">
+                  <label for="kn-edit-content">Contenido que usará el agente</label>
+                  <textarea id="kn-edit-content" rows="12"></textarea>
+                </div>
+              </div>
+              <a id="kn-edit-file-link" href="#" target="_blank" rel="noopener" class="hidden">Ver archivo original ↗</a>
+            </div>
+            <div class="modal-footer">
+              <button class="btn btn-outline" id="modal-knowledge-cancel">Cancelar</button>
+              <button class="btn btn-primary" id="btn-save-knowledge">Guardar</button>
+            </div>
+          </div>
         </div>
       </section>
 

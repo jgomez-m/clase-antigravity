@@ -24,7 +24,15 @@ const SECTION_TITLES = {
   cotizaciones: 'Cotizaciones',
   inventario:   'Inventario',
   mensajes:     'Mensajes',
+  agente:       'Agente IA',
 };
+
+let agentProviders = {};
+let agentDefaultPrompt = '';
+let agentTestHistory = [];
+let knowledgeEntries = [];
+let editingKnowledgeId = null;
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 
 /* ============================================================
    UTILIDADES
@@ -163,6 +171,32 @@ function bindStaticEvents() {
   document.getElementById('modal-property').addEventListener('click', e => {
     if (e.target === e.currentTarget) closePropertyModal();
   });
+
+  // Agente IA
+  document.getElementById('agent-provider').addEventListener('change', onAgentProviderChange);
+  document.getElementById('agent-temperature').addEventListener('input', e => {
+    document.getElementById('agent-temperature-value').textContent = Number(e.target.value).toFixed(1);
+  });
+  document.getElementById('btn-agent-reset-prompt').addEventListener('click', () => {
+    document.getElementById('agent-system-prompt').value = agentDefaultPrompt;
+  });
+  document.getElementById('form-agent-config').addEventListener('submit', e => {
+    e.preventDefault();
+    saveAgentConfig(false);
+  });
+  document.getElementById('btn-agent-clear-key').addEventListener('click', () => {
+    if (confirm('¿Eliminar la API key guardada? El agente se desactivará.')) saveAgentConfig(true);
+  });
+  document.getElementById('form-agent-test').addEventListener('submit', sendAgentTest);
+  document.getElementById('btn-agent-test-clear').addEventListener('click', resetAgentTest);
+  document.getElementById('form-knowledge-text').addEventListener('submit', createKnowledgeText);
+  document.getElementById('form-knowledge-file').addEventListener('submit', uploadKnowledgeFile);
+  document.getElementById('modal-knowledge-close').addEventListener('click', closeKnowledgeModal);
+  document.getElementById('modal-knowledge-cancel').addEventListener('click', closeKnowledgeModal);
+  document.getElementById('btn-save-knowledge').addEventListener('click', saveKnowledgeEdit);
+  document.getElementById('modal-knowledge').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeKnowledgeModal();
+  });
 }
 
 async function handleLogin(e) {
@@ -228,6 +262,7 @@ function showSection(name) {
     case 'cotizaciones': loadReservations(); break;
     case 'inventario':   loadProperties();  break;
     case 'mensajes':     loadInquiries();   break;
+    case 'agente':       loadAgentConfig(); loadKnowledge(); break;
   }
 }
 
@@ -925,6 +960,306 @@ function openWhatsApp(phone) {
   window.open(`https://wa.me/57${number}`, '_blank');
 }
 
+/* ============================================================
+   AGENTE IA — CONFIGURACIÓN
+   ============================================================ */
+function setAgentMsg(id, text, kind) {
+  const el = document.getElementById(id);
+  el.textContent = text || '';
+  el.className = 'agent-msg' + (kind ? ` ${kind}` : '');
+}
+
+function renderAgentStatus(cfg) {
+  const pill = document.getElementById('agent-status-pill');
+  const on = cfg.active && cfg.has_api_key;
+  pill.textContent = on ? 'Activo en la web' : 'Inactivo';
+  pill.className = 'agent-pill ' + (on ? 'agent-pill-on' : 'agent-pill-off');
+}
+
+function fillModelOptions(providerKey) {
+  const provider = agentProviders[providerKey];
+  const list = document.getElementById('agent-model-options');
+  list.innerHTML = (provider?.models || []).map(m => `<option value="${escapeHTML(m)}"></option>`).join('');
+  document.getElementById('agent-model').placeholder = provider?.default_model || '';
+}
+
+function onAgentProviderChange() {
+  const key = document.getElementById('agent-provider').value;
+  fillModelOptions(key);
+  document.getElementById('agent-model').value = agentProviders[key]?.default_model || '';
+  setAgentMsg('agent-config-msg', 'Si cambias de proveedor, ingresa también la API key de ese proveedor.', 'warn');
+}
+
+async function loadAgentConfig() {
+  try {
+    const res = await apiFetch('/api/admin/agent-config');
+    if (!res.ok) return;
+    const data = await res.json();
+    agentProviders = data.providers || {};
+    agentDefaultPrompt = data.default_system_prompt || '';
+    const cfg = data.config;
+
+    const select = document.getElementById('agent-provider');
+    select.innerHTML = Object.entries(agentProviders)
+      .map(([key, p]) => `<option value="${key}">${escapeHTML(p.name)}</option>`).join('');
+    select.value = cfg.provider;
+    fillModelOptions(cfg.provider);
+
+    document.getElementById('agent-model').value = cfg.model || '';
+    document.getElementById('agent-api-key').value = '';
+    document.getElementById('agent-api-key').placeholder = cfg.has_api_key
+      ? `Guardada (${cfg.api_key_masked}). Escribe una nueva para reemplazarla.`
+      : 'Sin API key configurada';
+    document.getElementById('btn-agent-clear-key').classList.toggle('hidden', !cfg.has_api_key);
+    document.getElementById('agent-temperature').value = cfg.temperature;
+    document.getElementById('agent-temperature-value').textContent = Number(cfg.temperature).toFixed(1);
+    document.getElementById('agent-max-tokens').value = cfg.max_tokens;
+    document.getElementById('agent-system-prompt').value = cfg.system_prompt || '';
+    document.getElementById('agent-active').checked = !!cfg.active;
+    renderAgentStatus(cfg);
+  } catch (err) {
+    console.error('loadAgentConfig error:', err);
+  }
+}
+
+async function saveAgentConfig(clearKey) {
+  const body = {
+    provider:      document.getElementById('agent-provider').value,
+    model:         document.getElementById('agent-model').value.trim(),
+    api_key:       clearKey ? '' : document.getElementById('agent-api-key').value.trim(),
+    clear_api_key: !!clearKey,
+    temperature:   parseFloat(document.getElementById('agent-temperature').value),
+    max_tokens:    parseInt(document.getElementById('agent-max-tokens').value, 10),
+    system_prompt: document.getElementById('agent-system-prompt').value,
+    active:        clearKey ? false : document.getElementById('agent-active').checked,
+  };
+  try {
+    const res = await apiFetch('/api/admin/agent-config', { method: 'PUT', body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAgentMsg('agent-config-msg', data.error || 'No se pudo guardar la configuración.', 'error');
+      return;
+    }
+    await loadAgentConfig();
+    setAgentMsg('agent-config-msg', clearKey ? 'API key eliminada.' : 'Configuración guardada.', 'ok');
+  } catch (err) {
+    console.error('saveAgentConfig error:', err);
+    setAgentMsg('agent-config-msg', 'Error de conexión.', 'error');
+  }
+}
+
+/* ============================================================
+   AGENTE IA — CHAT DE PRUEBA
+   ============================================================ */
+function appendAgentTestBubble(text, kind) {
+  const box = document.getElementById('agent-test-messages');
+  const div = document.createElement('div');
+  div.className = `agent-bubble ${kind}`;
+  div.textContent = text;
+  box.appendChild(div);
+  box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function resetAgentTest() {
+  agentTestHistory = [];
+  document.getElementById('agent-test-messages').innerHTML = '';
+}
+
+async function sendAgentTest(e) {
+  e.preventDefault();
+  const input = document.getElementById('agent-test-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  appendAgentTestBubble(text, 'user');
+  agentTestHistory.push({ role: 'user', content: text });
+  const typing = appendAgentTestBubble('Escribiendo…', 'assistant typing');
+  input.disabled = true;
+
+  try {
+    const res = await apiFetch('/api/admin/agent-test', {
+      method: 'POST',
+      body: JSON.stringify({ messages: agentTestHistory }),
+    });
+    const data = await res.json().catch(() => ({}));
+    typing.remove();
+    if (res.ok) {
+      appendAgentTestBubble(data.reply, 'assistant');
+      agentTestHistory.push({ role: 'assistant', content: data.reply });
+    } else {
+      agentTestHistory.pop();
+      appendAgentTestBubble(data.error || 'El agente no respondió.', 'error');
+    }
+  } catch (err) {
+    typing.remove();
+    agentTestHistory.pop();
+    appendAgentTestBubble('Error de conexión.', 'error');
+  } finally {
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+/* ============================================================
+   AGENTE IA — BASE DE CONOCIMIENTO
+   ============================================================ */
+const KN_TYPE_LABELS = { text: 'Texto', pdf: 'PDF', image: 'Imagen' };
+
+async function loadKnowledge() {
+  try {
+    const res = await apiFetch('/api/admin/knowledge');
+    if (!res.ok) return;
+    const data = await res.json();
+    knowledgeEntries = data.entries || [];
+    renderKnowledgeTable();
+  } catch (err) {
+    console.error('loadKnowledge error:', err);
+  }
+}
+
+function renderKnowledgeTable() {
+  const tbody = document.getElementById('tbody-knowledge');
+  if (knowledgeEntries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:20px;">Aún no hay entradas. El agente usará solo el inventario y el prompt.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = knowledgeEntries.map(k => {
+    const content = k.content || '';
+    const preview = content
+      ? `<span class="kn-preview">${escapeHTML(content.substring(0, 140))}${content.length > 140 ? '…' : ''}</span>`
+      : '<span class="kn-empty">Sin texto: edítala para que el agente la use</span>';
+    const fileLink = k.has_file
+      ? `<a class="btn btn-outline btn-xs" href="/api/admin/knowledge/${k.id}/file" target="_blank" rel="noopener" style="margin-left:4px;">📎</a>`
+      : '';
+    return `<tr>
+      <td><strong>${escapeHTML(k.title)}</strong>${k.original_filename ? `<div style="font-size:11px;color:var(--text-muted);">${escapeHTML(k.original_filename)}</div>` : ''}</td>
+      <td><span class="kn-type kn-type-${k.entry_type}">${KN_TYPE_LABELS[k.entry_type] || k.entry_type}</span></td>
+      <td>${preview}</td>
+      <td style="white-space:nowrap">${formatDate(k.created_at)}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-xs" onclick="openKnowledgeModal(${k.id})">✏️ Editar</button>${fileLink}
+        <button class="btn btn-danger btn-xs" onclick="deleteKnowledge(${k.id})" style="margin-left:4px;">🗑️</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function createKnowledgeText(e) {
+  e.preventDefault();
+  const body = {
+    title:   document.getElementById('kn-text-title').value.trim(),
+    content: document.getElementById('kn-text-content').value.trim(),
+  };
+  try {
+    const res = await apiFetch('/api/admin/knowledge', { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAgentMsg('knowledge-msg', data.error || 'No se pudo guardar la entrada.', 'error');
+      return;
+    }
+    e.target.reset();
+    setAgentMsg('knowledge-msg', 'Entrada agregada.', 'ok');
+    loadKnowledge();
+  } catch (err) {
+    setAgentMsg('knowledge-msg', 'Error de conexión.', 'error');
+  }
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+async function uploadKnowledgeFile(e) {
+  e.preventDefault();
+  const file = document.getElementById('kn-file-input').files[0];
+  if (!file) return;
+  if (file.size > MAX_UPLOAD_BYTES) {
+    setAgentMsg('knowledge-msg', 'El archivo supera el máximo de 8 MB.', 'error');
+    return;
+  }
+  const btn = document.getElementById('btn-kn-upload');
+  btn.disabled = true;
+  setAgentMsg('knowledge-msg', 'Subiendo y procesando archivo…', '');
+  try {
+    const body = {
+      title:       document.getElementById('kn-file-title').value.trim(),
+      description: document.getElementById('kn-file-description').value.trim(),
+      filename:    file.name,
+      mime_type:   file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : ''),
+      data:        await readFileAsBase64(file),
+    };
+    const res = await apiFetch('/api/admin/knowledge/upload', { method: 'POST', body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setAgentMsg('knowledge-msg', data.error || 'No se pudo subir el archivo.', 'error');
+      return;
+    }
+    e.target.reset();
+    if (data.warning) setAgentMsg('knowledge-msg', data.warning, 'warn');
+    else setAgentMsg('knowledge-msg', `Archivo procesado (${data.entry.content_length.toLocaleString('es-CO')} caracteres de texto).`, 'ok');
+    loadKnowledge();
+  } catch (err) {
+    console.error('uploadKnowledgeFile error:', err);
+    setAgentMsg('knowledge-msg', 'Error de conexión.', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function openKnowledgeModal(id) {
+  const entry = knowledgeEntries.find(k => k.id === id);
+  if (!entry) return;
+  editingKnowledgeId = id;
+  document.getElementById('kn-edit-title').value = entry.title || '';
+  document.getElementById('kn-edit-content').value = entry.content || '';
+  const link = document.getElementById('kn-edit-file-link');
+  link.classList.toggle('hidden', !entry.has_file);
+  link.href = entry.has_file ? `/api/admin/knowledge/${id}/file` : '#';
+  document.getElementById('modal-knowledge').classList.remove('hidden');
+}
+
+function closeKnowledgeModal() {
+  document.getElementById('modal-knowledge').classList.add('hidden');
+  editingKnowledgeId = null;
+}
+
+async function saveKnowledgeEdit() {
+  if (editingKnowledgeId === null) return;
+  const body = {
+    title:   document.getElementById('kn-edit-title').value.trim(),
+    content: document.getElementById('kn-edit-content').value.trim(),
+  };
+  try {
+    const res = await apiFetch(`/api/admin/knowledge/${editingKnowledgeId}`, { method: 'PUT', body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data.error || 'No se pudo guardar la entrada.');
+      return;
+    }
+    closeKnowledgeModal();
+    loadKnowledge();
+  } catch (err) {
+    alert('Error de conexión.');
+  }
+}
+
+async function deleteKnowledge(id) {
+  if (!confirm('¿Eliminar esta entrada de la base de conocimiento?')) return;
+  try {
+    const res = await apiFetch(`/api/admin/knowledge/${id}`, { method: 'DELETE' });
+    if (res.ok) loadKnowledge();
+    else alert('Error al eliminar la entrada.');
+  } catch (err) {
+    console.error('deleteKnowledge error:', err);
+  }
+}
+
 /* ── Exponer funciones globales necesarias para los onclick HTML ── */
 window.updateReservationStatus = updateReservationStatus;
 window.gotoResPage             = gotoResPage;
@@ -932,3 +1267,5 @@ window.openPropertyModal       = openPropertyModal;
 window.deleteProperty          = deleteProperty;
 window.markInquiryAttended     = markInquiryAttended;
 window.openWhatsApp            = openWhatsApp;
+window.openKnowledgeModal      = openKnowledgeModal;
+window.deleteKnowledge         = deleteKnowledge;

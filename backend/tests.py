@@ -892,5 +892,506 @@ class TestServerIntegration(unittest.TestCase):
         self.assertEqual(status, 404)
 
 
+# ══════════════════════════════════════════════════════════════
+# E) Tests de llm.py
+# ══════════════════════════════════════════════════════════════
+def _minimal_pdf(text: str) -> bytes:
+    """PDF de una página con un stream de texto sin comprimir."""
+    stream = f"BT /F1 24 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] "
+        b"/Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length " + str(len(stream)).encode() + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += f"{i} 0 obj\n".encode() + obj + b"\nendobj\n"
+    xref_pos = len(out)
+    out += f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode()
+    for off in offsets:
+        out += f"{off:010d} 00000 n \n".encode()
+    out += f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_pos}\n%%EOF\n".encode()
+    return bytes(out)
+
+
+PNG_1PX = bytes.fromhex(
+    "89504e470d0a1a0a0000000d4948445200000001000000010806000000"
+    "1f15c4890000000d49444154789c6360f8cfc0f01f0005000201e2a1"
+    "78a70000000049454e44ae426082"
+)
+
+
+class TestLLMCrypto(unittest.TestCase):
+    """Cifrado y enmascarado de API keys."""
+
+    def test_roundtrip(self):
+        import llm
+        key = "sk-proj-" + "x" * 120
+        enc = llm.encrypt_api_key(key, TEST_SECRET)
+        self.assertNotIn("sk-proj", enc)
+        self.assertEqual(llm.decrypt_api_key(enc, TEST_SECRET), key)
+
+    def test_random_nonce(self):
+        import llm
+        self.assertNotEqual(llm.encrypt_api_key("abc", TEST_SECRET),
+                            llm.encrypt_api_key("abc", TEST_SECRET))
+
+    def test_wrong_secret_raises(self):
+        import llm
+        enc = llm.encrypt_api_key("sk-secret", TEST_SECRET)
+        with self.assertRaises(ValueError):
+            llm.decrypt_api_key(enc, "otro-secret")
+
+    def test_tampered_raises(self):
+        import base64
+        import llm
+        raw = bytearray(base64.urlsafe_b64decode(llm.encrypt_api_key("sk-secret", TEST_SECRET)))
+        raw[20] ^= 0x01
+        with self.assertRaises(ValueError):
+            llm.decrypt_api_key(base64.urlsafe_b64encode(bytes(raw)).decode(), TEST_SECRET)
+
+    def test_garbage_raises(self):
+        import llm
+        with self.assertRaises(ValueError):
+            llm.decrypt_api_key("no-es-base64!!", TEST_SECRET)
+
+    def test_mask(self):
+        import llm
+        self.assertEqual(llm.mask_api_key("sk-123456789"), "••••6789")
+        self.assertEqual(llm.mask_api_key("abc"), "••••")
+
+
+class TestLLMProviders(unittest.TestCase):
+    """Formato de las peticiones a cada proveedor (sin red)."""
+
+    MESSAGES = [
+        {"role": "system", "content": "Eres un asistente."},
+        {"role": "user", "content": "Hola"},
+        {"role": "assistant", "content": "¿En qué te ayudo?"},
+        {"role": "user", "content": "Busco apartamento"},
+    ]
+
+    def _capture(self, provider, response):
+        import llm
+        from unittest import mock
+        with mock.patch("llm._make_request", return_value=response) as m:
+            reply = llm.chat(provider, "KEY123", "modelo-x", self.MESSAGES, 0.5, 256)
+        url, headers, body = m.call_args.args
+        return reply, url, headers, body
+
+    def test_openai(self):
+        reply, url, headers, body = self._capture(
+            "openai", {"choices": [{"message": {"content": " Respuesta "}}]})
+        self.assertEqual(reply, "Respuesta")
+        self.assertIn("api.openai.com", url)
+        self.assertEqual(headers["Authorization"], "Bearer KEY123")
+        self.assertEqual(body["messages"], self.MESSAGES)
+        self.assertEqual(body["max_tokens"], 256)
+
+    def test_anthropic_separates_system(self):
+        reply, url, headers, body = self._capture(
+            "anthropic", {"content": [{"text": "Hola desde Claude"}]})
+        self.assertEqual(reply, "Hola desde Claude")
+        self.assertEqual(headers["x-api-key"], "KEY123")
+        self.assertEqual(body["system"], "Eres un asistente.")
+        self.assertTrue(all(m["role"] != "system" for m in body["messages"]))
+
+    def test_gemini_key_in_header_not_url(self):
+        reply, url, headers, body = self._capture(
+            "gemini", {"candidates": [{"content": {"parts": [{"text": "Hola Gemini"}]}}]})
+        self.assertEqual(reply, "Hola Gemini")
+        self.assertNotIn("KEY123", url)
+        self.assertIn("modelo-x:generateContent", url)
+        self.assertEqual(headers["x-goog-api-key"], "KEY123")
+        self.assertEqual([c["role"] for c in body["contents"]], ["user", "model", "user"])
+        self.assertEqual(body["systemInstruction"]["parts"][0]["text"], "Eres un asistente.")
+
+    def test_openrouter(self):
+        reply, url, headers, body = self._capture(
+            "openrouter", {"choices": [{"message": {"content": "OR"}}]})
+        self.assertEqual(reply, "OR")
+        self.assertIn("openrouter.ai", url)
+        self.assertEqual(headers["Authorization"], "Bearer KEY123")
+
+    def test_unknown_provider(self):
+        import llm
+        with self.assertRaises(ValueError):
+            llm.chat("desconocido", "k", "m", self.MESSAGES)
+
+    def test_unexpected_response_format(self):
+        import llm
+        from unittest import mock
+        with mock.patch("llm._make_request", return_value={"inesperado": True}):
+            with self.assertRaises(RuntimeError):
+                llm.chat("openai", "k", "m", self.MESSAGES)
+
+
+class TestLLMContext(unittest.TestCase):
+    """Construcción del mensaje de sistema y extracción de PDFs."""
+
+    PROPERTY = {
+        "id": 7, "title": "Penthouse Test", "operation": "venta", "property_type": "apartamento",
+        "city": "medellin", "neighborhood": "El Poblado", "price": 2650000000,
+        "separation_fee": 15000000, "admin_fee": 1350000, "area_m2": 245, "bedrooms": 3,
+        "bathrooms": 4, "parking": 3, "stratum": 6, "status": "disponible",
+        "description": "Vista panorámica", "amenities": ["Terraza", "Gimnasio"],
+    }
+
+    def test_includes_inventory_knowledge_contact(self):
+        import llm
+        msg = llm.build_system_message(
+            "Prompt base",
+            [{"title": "Horarios", "content": "Lunes a sábado de 8 a 6."}],
+            [self.PROPERTY],
+            {"WhatsApp": "+57 300"},
+        )
+        self.assertTrue(msg.startswith("Prompt base"))
+        self.assertIn("Penthouse Test", msg)
+        self.assertIn("$2.650.000.000 COP", msg)
+        self.assertIn("Medellín", msg)
+        self.assertIn("Terraza, Gimnasio", msg)
+        self.assertIn("Lunes a sábado", msg)
+        self.assertIn("+57 300", msg)
+
+    def test_empty_prompt_uses_default_and_no_inventory(self):
+        import llm
+        msg = llm.build_system_message("", [], [])
+        self.assertIn("JG Inmobiliaria", msg)
+        self.assertIn("No hay inmuebles disponibles", msg)
+
+    def test_knowledge_truncated(self):
+        import llm
+        huge = [{"title": f"Doc {i}", "content": "x" * 10_000} for i in range(10)]
+        msg = llm.build_system_message("P", huge, [])
+        self.assertLess(len(msg), llm.MAX_KNOWLEDGE_CHARS + 1_000)
+
+    def test_extract_pdf_text(self):
+        import llm
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "doc.pdf"
+            path.write_bytes(_minimal_pdf("Requisitos de arriendo JG"))
+            self.assertIn("Requisitos de arriendo JG", llm.extract_pdf_text(path))
+
+    def test_extract_pdf_text_invalid_file(self):
+        import llm
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "roto.pdf"
+            path.write_bytes(b"no es un pdf")
+            self.assertEqual(llm.extract_pdf_text(path), "")
+
+
+class TestChatRateLimit(unittest.TestCase):
+    def test_blocks_after_limit(self):
+        import server
+        key = f"rate-test-{time.time()}"
+        for _ in range(server.CHAT_RATE_LIMIT):
+            self.assertFalse(server.chat_rate_limited(key))
+        self.assertTrue(server.chat_rate_limited(key))
+
+
+# ══════════════════════════════════════════════════════════════
+# F) Tests de integración del Agente IA
+# ══════════════════════════════════════════════════════════════
+class TestAgentIntegration(unittest.TestCase):
+    """Endpoints del agente con el LLM simulado."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls._tmpdir = tempfile.mkdtemp(prefix="jg_agent_")
+        cls._db_path = Path(cls._tmpdir) / "agent.db"
+        cls._settings = Settings(
+            port=0,
+            db_path=cls._db_path,
+            admin_user=TEST_USER,
+            admin_password=TEST_PASS,
+            session_secret=TEST_SECRET,
+            contact_email="test@jginmobiliaria.com",
+            whatsapp_number="573114436916",
+            whatsapp_display="+57 311 443 6916",
+        )
+        from db import init_db
+        init_db(cls._settings)
+
+        import server
+        server._chat_rate_hits.clear()
+
+        class TestHandler(server.JGRequestHandler):
+            pass
+        TestHandler.settings = cls._settings
+
+        cls._server = ThreadingHTTPServer(("127.0.0.1", 0), TestHandler)
+        cls._base = f"http://127.0.0.1:{cls._server.server_address[1]}"
+        cls._thread = threading.Thread(target=cls._server.serve_forever, daemon=True)
+        cls._thread.start()
+        cls._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._server.shutdown()
+        cls._server.server_close()
+        import shutil
+        shutil.rmtree(cls._tmpdir, ignore_errors=True)
+
+    _request = TestServerIntegration._request
+    _admin_login = TestServerIntegration._admin_login
+
+    def _admin(self, method, path, data=None, **kw):
+        return self._request(method, path, data, headers={"Cookie": self._admin_login()}, **kw)
+
+    def _conn(self):
+        from db import get_connection
+        return get_connection(self._db_path)
+
+    def _activate(self, provider="openai"):
+        status, body, _ = self._admin("PUT", "/api/admin/agent-config", {
+            "provider": provider, "model": "", "api_key": "sk-test-secret-9876",
+            "temperature": 0.3, "max_tokens": 512, "system_prompt": "Prompt de prueba", "active": True,
+        })
+        self.assertEqual(status, 200, body)
+        return body
+
+    def _deactivate(self):
+        self._admin("PUT", "/api/admin/agent-config", {
+            "provider": "openai", "clear_api_key": True, "active": False,
+        })
+
+    def tearDown(self):
+        self._deactivate()
+
+    # ── Esquema ──────────────────────────────────────────────
+    def test_tables_and_default_config(self):
+        with self._conn() as conn:
+            tables = {r["name"] for r in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+            cfg = conn.execute("SELECT * FROM agent_config WHERE id = 1").fetchone()
+        self.assertTrue({"agent_config", "knowledge_entries", "chat_sessions", "chat_messages"} <= tables)
+        self.assertEqual(cfg["provider"], "openai")
+
+    # ── Estado público ───────────────────────────────────────
+    def test_status_inactive_and_chat_503(self):
+        status, body, _ = self._request("GET", "/api/agent/status")
+        self.assertEqual(status, 200)
+        self.assertFalse(body["active"])
+        status, body, _ = self._request("POST", "/api/chat", {"session_id": "sesion-12345", "message": "Hola"})
+        self.assertEqual(status, 503)
+
+    # ── Autenticación ────────────────────────────────────────
+    def test_admin_endpoints_require_auth(self):
+        for method, path, data in [
+            ("GET", "/api/admin/agent-config", None),
+            ("PUT", "/api/admin/agent-config", {"provider": "openai"}),
+            ("GET", "/api/admin/knowledge", None),
+            ("POST", "/api/admin/knowledge", {"title": "a", "content": "b"}),
+            ("POST", "/api/admin/knowledge/upload", {"x": 1}),
+            ("PUT", "/api/admin/knowledge/1", {"title": "a"}),
+            ("DELETE", "/api/admin/knowledge/1", None),
+            ("GET", "/api/admin/knowledge/1/file", None),
+            ("POST", "/api/admin/agent-test", {"messages": []}),
+        ]:
+            status, _, _ = self._request(method, path, data)
+            self.assertEqual(status, 401, f"{method} {path}")
+
+    # ── Configuración ────────────────────────────────────────
+    def test_get_default_config(self):
+        status, body, _ = self._admin("GET", "/api/admin/agent-config")
+        self.assertEqual(status, 200)
+        self.assertEqual(set(body["providers"]), {"openai", "anthropic", "gemini", "openrouter"})
+        self.assertFalse(body["config"]["has_api_key"])
+        self.assertNotIn("api_key_encrypted", body["config"])
+
+    def test_activate_without_key_rejected(self):
+        status, body, _ = self._admin("PUT", "/api/admin/agent-config", {"provider": "openai", "active": True})
+        self.assertEqual(status, 400)
+
+    def test_invalid_config_values(self):
+        for payload in [
+            {"provider": "skynet"},
+            {"provider": "openai", "temperature": 1.5},
+            {"provider": "openai", "max_tokens": 10},
+            {"provider": "openai", "model": "modelo con espacios"},
+        ]:
+            status, _, _ = self._admin("PUT", "/api/admin/agent-config", payload)
+            self.assertEqual(status, 400, payload)
+
+    def test_save_config_masks_and_encrypts_key(self):
+        body = self._activate(provider="gemini")
+        cfg = body["config"]
+        self.assertTrue(cfg["active"])
+        self.assertEqual(cfg["api_key_masked"], "••••9876")
+        self.assertEqual(cfg["model"], "gemini-2.0-flash")
+        self.assertNotIn("sk-test-secret-9876", json.dumps(body))
+        with self._conn() as conn:
+            row = conn.execute("SELECT api_key_encrypted FROM agent_config").fetchone()
+        self.assertNotIn("sk-test", row["api_key_encrypted"])
+        import llm
+        self.assertEqual(llm.decrypt_api_key(row["api_key_encrypted"], TEST_SECRET), "sk-test-secret-9876")
+
+        # Guardar sin api_key conserva la clave existente
+        status, body, _ = self._admin("PUT", "/api/admin/agent-config", {
+            "provider": "gemini", "active": True, "temperature": 0.9})
+        self.assertEqual(status, 200)
+        self.assertTrue(body["config"]["has_api_key"])
+        status, body, _ = self._request("GET", "/api/agent/status")
+        self.assertTrue(body["active"])
+
+    # ── Base de conocimiento ─────────────────────────────────
+    def test_knowledge_text_crud(self):
+        status, body, _ = self._admin("POST", "/api/admin/knowledge", {"title": "FAQ", "content": "Respuesta 1"})
+        self.assertEqual(status, 201)
+        entry_id = body["entry"]["id"]
+        self.assertEqual(body["entry"]["entry_type"], "text")
+
+        status, body, _ = self._admin("PUT", f"/api/admin/knowledge/{entry_id}",
+                                      {"title": "FAQ editada", "content": "Respuesta 2"})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["entry"]["content"], "Respuesta 2")
+
+        status, body, _ = self._admin("GET", "/api/admin/knowledge")
+        self.assertIn(entry_id, [e["id"] for e in body["entries"]])
+
+        status, _, _ = self._admin("DELETE", f"/api/admin/knowledge/{entry_id}")
+        self.assertEqual(status, 200)
+        status, _, _ = self._admin("DELETE", f"/api/admin/knowledge/{entry_id}")
+        self.assertEqual(status, 404)
+
+    def test_knowledge_text_requires_fields(self):
+        status, _, _ = self._admin("POST", "/api/admin/knowledge", {"title": "", "content": "x"})
+        self.assertEqual(status, 400)
+
+    def test_upload_pdf_extracts_text_and_serves_file(self):
+        import base64
+        pdf = _minimal_pdf("Politica de mascotas permitidas")
+        status, body, _ = self._admin("POST", "/api/admin/knowledge/upload", {
+            "title": "Políticas", "filename": "politicas.pdf", "mime_type": "application/pdf",
+            "data": base64.b64encode(pdf).decode(),
+        })
+        self.assertEqual(status, 201, body)
+        entry = body["entry"]
+        self.assertEqual(entry["entry_type"], "pdf")
+        self.assertTrue(entry["has_file"])
+        self.assertIn("mascotas", entry["content"])
+        self.assertNotIn("warning", body)
+
+        status, raw, headers = self._admin("GET", f"/api/admin/knowledge/{entry['id']}/file", expect_json=False)
+        self.assertEqual(status, 200)
+        self.assertEqual(raw, pdf)
+        self.assertIn("application/pdf", headers.get("Content-Type", ""))
+
+        stored = list((self._db_path.parent / "uploads" / "knowledge").iterdir())
+        self.assertEqual(len(stored), 1)
+        self._admin("DELETE", f"/api/admin/knowledge/{entry['id']}")
+        self.assertFalse(stored[0].exists())
+
+    def test_upload_image_without_description_warns(self):
+        import base64
+        status, body, _ = self._admin("POST", "/api/admin/knowledge/upload", {
+            "title": "Fachada", "filename": "fachada.png", "mime_type": "image/png",
+            "data": base64.b64encode(PNG_1PX).decode(),
+        })
+        self.assertEqual(status, 201)
+        self.assertEqual(body["entry"]["entry_type"], "image")
+        self.assertIn("warning", body)
+        self._admin("DELETE", f"/api/admin/knowledge/{body['entry']['id']}")
+
+    def test_upload_rejects_bad_files(self):
+        import base64
+        cases = [
+            {"mime_type": "application/x-msdownload", "data": base64.b64encode(b"MZ...").decode()},
+            {"mime_type": "image/png", "data": base64.b64encode(b"<script>").decode()},
+            {"mime_type": "application/pdf", "data": "@@no-base64@@"},
+            {"mime_type": "application/pdf", "data": ""},
+        ]
+        for case in cases:
+            status, _, _ = self._admin("POST", "/api/admin/knowledge/upload",
+                                       {"title": "x", "filename": "x", **case})
+            self.assertEqual(status, 400, case["mime_type"])
+
+    # ── Chat público ─────────────────────────────────────────
+    def test_chat_validation(self):
+        self._activate()
+        status, _, _ = self._request("POST", "/api/chat", {"session_id": "corto", "message": "Hola"})
+        self.assertEqual(status, 400)
+        status, _, _ = self._request("POST", "/api/chat", {"session_id": "sesion-valida-1", "message": ""})
+        self.assertEqual(status, 400)
+        status, _, _ = self._request("POST", "/api/chat",
+                                     {"session_id": "sesion-valida-1", "message": "x" * 1001})
+        self.assertEqual(status, 400)
+
+    def test_chat_uses_context_and_history(self):
+        from unittest import mock
+        self._activate(provider="anthropic")
+        self._admin("POST", "/api/admin/knowledge", {"title": "Horario", "content": "Atendemos sábados."})
+
+        with mock.patch("llm.chat", side_effect=["Primera respuesta", "Segunda respuesta"]) as fake:
+            status, body, _ = self._request("POST", "/api/chat",
+                                            {"session_id": "sesion-historial-1", "message": "Hola"})
+            self.assertEqual(status, 200)
+            self.assertEqual(body["reply"], "Primera respuesta")
+            status, body, _ = self._request("POST", "/api/chat",
+                                            {"session_id": "sesion-historial-1", "message": "¿Abren sábados?"})
+            self.assertEqual(body["reply"], "Segunda respuesta")
+
+        provider, api_key, model, messages = fake.call_args.args
+        self.assertEqual(provider, "anthropic")
+        self.assertEqual(api_key, "sk-test-secret-9876")
+        self.assertEqual(model, "claude-sonnet-4-20250514")
+        self.assertEqual(fake.call_args.kwargs["temperature"], 0.3)
+        system = messages[0]["content"]
+        self.assertIn("Prompt de prueba", system)
+        self.assertIn("Penthouse Skyview Poblado", system)
+        self.assertIn("Atendemos sábados.", system)
+        self.assertEqual([m["role"] for m in messages[1:]], ["user", "assistant", "user"])
+
+        with self._conn() as conn:
+            count = conn.execute(
+                "SELECT COUNT(*) FROM chat_messages m JOIN chat_sessions s ON s.id = m.session_id "
+                "WHERE s.session_id = 'sesion-historial-1'").fetchone()[0]
+        self.assertEqual(count, 4)
+
+    def test_chat_provider_error_returns_502(self):
+        from unittest import mock
+        self._activate()
+        with mock.patch("llm.chat", side_effect=RuntimeError("Error 401 del proveedor LLM")):
+            status, body, _ = self._request("POST", "/api/chat",
+                                            {"session_id": "sesion-error-1", "message": "Hola"})
+        self.assertEqual(status, 502)
+        self.assertNotIn("401", body["error"])
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT COUNT(*) FROM chat_messages m JOIN chat_sessions s ON s.id = m.session_id "
+                "WHERE s.session_id = 'sesion-error-1'").fetchone()
+        self.assertEqual(row[0], 0)
+
+    # ── Chat de prueba (admin) ───────────────────────────────
+    def test_agent_test_without_key(self):
+        status, body, _ = self._admin("POST", "/api/admin/agent-test",
+                                      {"messages": [{"role": "user", "content": "Hola"}]})
+        self.assertEqual(status, 502)
+        self.assertIn("API key", body["error"])
+
+    def test_agent_test_replies_when_inactive(self):
+        from unittest import mock
+        self._activate()
+        self._admin("PUT", "/api/admin/agent-config", {"provider": "openai", "active": False})
+        with mock.patch("llm.chat", return_value="Respuesta de prueba"):
+            status, body, _ = self._admin("POST", "/api/admin/agent-test", {"messages": [
+                {"role": "user", "content": "Hola"},
+                {"role": "assistant", "content": "¡Hola!"},
+                {"role": "user", "content": "¿Qué tienen en Bogotá?"},
+            ]})
+        self.assertEqual(status, 200)
+        self.assertEqual(body["reply"], "Respuesta de prueba")
+
+    def test_agent_test_requires_user_last(self):
+        status, _, _ = self._admin("POST", "/api/admin/agent-test",
+                                   {"messages": [{"role": "assistant", "content": "Hola"}]})
+        self.assertEqual(status, 400)
+
+
 if __name__ == "__main__":
     unittest.main()

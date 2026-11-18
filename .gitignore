@@ -8,6 +8,9 @@
 *.sqlite
 *.sqlite3
 
+# Archivos subidos a la base de conocimiento del agente
+backend/uploads/
+
 # Python
 __pycache__/
 *.py[cod]

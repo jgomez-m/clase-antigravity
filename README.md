@@ -21,3 +21,17 @@ python3 backend/server.py
 - Tienda pública: `http://localhost:8080`
 - Panel administrador: `http://localhost:8080/admin`
 
+## Agente conversacional IA
+1. En el panel administrador abre **Agente IA**, elige el proveedor (OpenAI, Anthropic, Gemini u OpenRouter), pega tu API key y guarda.
+2. Prueba el agente en el **Chat de prueba** y, cuando responda bien, marca **Agente activo en la web pública**.
+3. Alimenta la **Base de conocimiento** con textos, PDFs o imágenes con descripción. El inventario disponible se incluye automáticamente.
+
+- La API key se guarda cifrada con `SESSION_SECRET`; si cambias esa variable debes volver a ingresar la key.
+- Para extraer mejor el texto de los PDFs instala `pdftotext` (`brew install poppler`); sin él se usa un extractor básico.
+- Los archivos subidos quedan en `backend/uploads/` (excluido de git).
+
+## Pruebas
+```bash
+cd backend && python3 -m unittest tests -v
+```
+

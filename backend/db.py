@@ -7,6 +7,7 @@ from typing import Any
 
 from auth import hash_password
 from config import Settings
+from llm import DEFAULT_SYSTEM_PROMPT, PROVIDERS
 
 
 SEED_PROPERTIES = [
@@ -241,7 +242,54 @@ def init_db(settings: Settings) -> None:
                 status TEXT NOT NULL DEFAULT 'nuevo' CHECK (status IN ('nuevo', 'atendido')),
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS agent_config (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                provider TEXT NOT NULL DEFAULT 'openai'
+                    CHECK (provider IN ('openai', 'anthropic', 'gemini', 'openrouter')),
+                api_key_encrypted TEXT NOT NULL DEFAULT '',
+                api_key_hint TEXT NOT NULL DEFAULT '',
+                model TEXT NOT NULL DEFAULT '',
+                system_prompt TEXT NOT NULL DEFAULT '',
+                temperature REAL NOT NULL DEFAULT 0.7,
+                max_tokens INTEGER NOT NULL DEFAULT 1024,
+                active INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS knowledge_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT NOT NULL,
+                entry_type TEXT NOT NULL CHECK (entry_type IN ('text', 'pdf', 'image')),
+                content TEXT NOT NULL DEFAULT '',
+                file_path TEXT NOT NULL DEFAULT '',
+                original_filename TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id INTEGER NOT NULL,
+                role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                FOREIGN KEY (session_id) REFERENCES chat_sessions(id) ON DELETE CASCADE
+            );
             """
+        )
+
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO agent_config (id, provider, model, system_prompt)
+            VALUES (1, 'openai', ?, ?)
+            """,
+            (PROVIDERS["openai"]["default_model"], DEFAULT_SYSTEM_PROMPT),
         )
 
         # Sincronizar administrador principal desde variables de entorno

@@ -16,6 +16,9 @@ let selectedCotizadorPropId = null;
 let isRotationActive = true;
 let isWireframeActive = false;
 let isChatOpen = false;
+let isAgentActive = false;
+let isChatWaiting = false;
+const CHAT_SESSION_KEY = 'jg_chat_session_id';
 
 const FALLBACK_SVG =
   'data:image/svg+xml;utf8,' +
@@ -778,11 +781,82 @@ function appendChatBubble(text, isUser) {
   const box = document.getElementById('chat-messages');
   const div = document.createElement('div');
   div.className = isUser
-    ? 'bg-light-primary text-white p-3 rounded-xl ml-auto max-w-[85%]'
-    : 'bg-white dark:bg-dark-surface-variant p-3 rounded-xl border border-light-outline-variant dark:border-dark-outline max-w-[88%]';
+    ? 'bg-light-primary text-white p-3 rounded-xl ml-auto max-w-[85%] whitespace-pre-line'
+    : 'bg-white dark:bg-dark-surface-variant p-3 rounded-xl border border-light-outline-variant dark:border-dark-outline max-w-[88%] whitespace-pre-line';
   div.textContent = text;
   box.appendChild(div);
   box.scrollTop = box.scrollHeight;
+  return div;
+}
+
+function getChatSessionId() {
+  let id = sessionStorage.getItem(CHAT_SESSION_KEY);
+  if (!id) {
+    id = (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`);
+    sessionStorage.setItem(CHAT_SESSION_KEY, id);
+  }
+  return id;
+}
+
+async function initChatAgent() {
+  try {
+    const res = await fetch('/api/agent/status');
+    const data = await res.json();
+    isAgentActive = !!data.active;
+  } catch {
+    isAgentActive = false;
+  }
+  if (isAgentActive) {
+    const status = document.getElementById('chat-status-text');
+    if (status) status.textContent = 'Asistente virtual · Responde al instante';
+  }
+}
+
+function fallbackChatReply(text) {
+  if (text.includes('Medellín')) {
+    return 'En Medellín tenemos viviendas en El Poblado, Provenza y Llanogrande. Puedes filtrarlas arriba y separar en línea.';
+  }
+  if (text.includes('Bogotá')) {
+    return 'En Bogotá tenemos viviendas disponibles en Rosales, Chicó Reservado y Santa Ana Oriental.';
+  }
+  return 'Gracias por tu mensaje. También puedes confirmar o resolver dudas inmediatas por WhatsApp al +57 311 443 6916.';
+}
+
+async function sendChatMessage(text) {
+  if (isChatWaiting) return;
+  appendChatBubble(text, true);
+  if (!isAgentActive) {
+    setTimeout(() => appendChatBubble(fallbackChatReply(text), false), 400);
+    return;
+  }
+  isChatWaiting = true;
+  const input = document.getElementById('chat-input');
+  input.disabled = true;
+  const typing = appendChatBubble('Escribiendo…', false);
+  typing.classList.add('italic', 'opacity-70', 'animate-pulse');
+
+  try {
+    const res = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: getChatSessionId(), message: text }),
+    });
+    const data = await res.json().catch(() => ({}));
+    typing.remove();
+    if (res.ok && data.reply) {
+      appendChatBubble(data.reply, false);
+    } else {
+      if (res.status === 503) isAgentActive = false;
+      appendChatBubble(data.error || fallbackChatReply(text), false);
+    }
+  } catch {
+    typing.remove();
+    appendChatBubble(fallbackChatReply(text), false);
+  } finally {
+    isChatWaiting = false;
+    input.disabled = false;
+    input.focus();
+  }
 }
 
 function sendQuickReply(text) {
@@ -790,25 +864,16 @@ function sendQuickReply(text) {
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${encodeURIComponent('Hola JG Inmobiliaria, deseo asesoría sobre viviendas disponibles.')}`, '_blank', 'noopener');
     return;
   }
-  appendChatBubble(text, true);
-  setTimeout(() => {
-    const reply = text.includes('Medellín')
-      ? 'En Medellín tenemos viviendas en El Poblado, Provenza y Llanogrande. Puedes filtrarlas arriba y separar en línea.'
-      : 'En Bogotá tenemos viviendas disponibles en Rosales, Chicó Reservado y Santa Ana Oriental.';
-    appendChatBubble(reply, false);
-  }, 400);
+  sendChatMessage(text);
 }
 
 function handleChatSubmit(e) {
   e.preventDefault();
   const input = document.getElementById('chat-input');
   const text = input.value.trim();
-  if (!text) return;
-  appendChatBubble(text, true);
+  if (!text || isChatWaiting) return;
   input.value = '';
-  setTimeout(() => {
-    appendChatBubble('Gracias por tu mensaje. También puedes confirmar o resolver dudas inmediatas por WhatsApp al +57 311 443 6916.', false);
-  }, 500);
+  sendChatMessage(text);
 }
 
 // ------------------------------------------------------------------
@@ -988,6 +1053,7 @@ window.addEventListener('DOMContentLoaded', () => {
   initTheme();
   updateCartBadges();
   fetchProperties();
+  initChatAgent();
   initHero3D();
   initInteractiveSection3D();
 

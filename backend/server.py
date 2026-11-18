@@ -1,5 +1,7 @@
 """Servidor HTTP y API REST para el e-commerce JG Inmobiliaria."""
 
+import base64
+import binascii
 from http import cookies
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
@@ -9,6 +11,8 @@ from pathlib import Path
 import re
 import secrets
 import sys
+import threading
+import time
 from typing import Any
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
@@ -18,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from auth import create_session_token, verify_password, verify_session_token
 from config import BASE_DIR, Settings, get_settings
 from db import get_connection, init_db, serialize_property
+import llm
 
 
 FRONTEND_DIR = BASE_DIR / "frontend"
@@ -28,6 +33,37 @@ VALID_CITIES = {"medellin", "bogota"}
 VALID_PROP_STATUSES = {"disponible", "reservado", "arrendado", "vendido"}
 VALID_PAYMENT_METHODS = {"transferencia", "tarjeta", "whatsapp"}
 VALID_RES_STATUSES = {"pendiente", "en_revision", "aprobado", "cerrado", "cancelado"}
+
+MAX_UPLOAD_BYTES = 8 * 1024 * 1024
+MAX_UPLOAD_BODY = 12 * 1024 * 1024  # base64 infla el archivo ~33%
+UPLOAD_TYPES = {
+    "application/pdf": ("pdf", ".pdf"),
+    "image/png": ("image", ".png"),
+    "image/jpeg": ("image", ".jpg"),
+    "image/webp": ("image", ".webp"),
+    "image/gif": ("image", ".gif"),
+}
+CHAT_MAX_MESSAGE_CHARS = 1000
+CHAT_HISTORY_LIMIT = 12
+CHAT_RATE_LIMIT = 20
+CHAT_RATE_WINDOW_SECONDS = 300
+SESSION_ID_RE = re.compile(r"[A-Za-z0-9_-]{8,64}")
+
+_chat_rate_lock = threading.Lock()
+_chat_rate_hits: dict[str, list[float]] = {}
+
+
+def chat_rate_limited(client_key: str) -> bool:
+    """Ventana deslizante en memoria para frenar abuso del endpoint público de chat."""
+    now = time.monotonic()
+    with _chat_rate_lock:
+        hits = [t for t in _chat_rate_hits.get(client_key, []) if now - t < CHAT_RATE_WINDOW_SECONDS]
+        if len(hits) >= CHAT_RATE_LIMIT:
+            _chat_rate_hits[client_key] = hits
+            return True
+        hits.append(now)
+        _chat_rate_hits[client_key] = hits
+        return False
 
 
 def slugify(text: str) -> str:
@@ -61,13 +97,13 @@ class JGRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _read_json(self) -> dict[str, Any] | None:
+    def _read_json(self, max_bytes: int = 1_000_000) -> dict[str, Any] | None:
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             self._send_json(400, {"error": "Encabezado Content-Length inválido."})
             return None
-        if length <= 0 or length > 1_000_000:
+        if length <= 0 or length > max_bytes:
             self._send_json(400, {"error": "Cuerpo de solicitud vacío o demasiado grande."})
             return None
         raw = self.rfile.read(length)
@@ -154,6 +190,10 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             self._handle_get_reservation_status(order_code)
             return
 
+        if path == "/api/agent/status":
+            self._handle_agent_status()
+            return
+
         # Rutas protegidas de administración
         if path == "/api/admin/me":
             user = self._require_admin()
@@ -195,6 +235,25 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             self._handle_admin_csv_report(query)
+            return
+
+        if path == "/api/admin/agent-config":
+            if not self._require_admin():
+                return
+            self._handle_get_agent_config()
+            return
+
+        if path == "/api/admin/knowledge":
+            if not self._require_admin():
+                return
+            self._handle_list_knowledge()
+            return
+
+        knowledge_file = re.fullmatch(r"/api/admin/knowledge/(\d+)/file", path)
+        if knowledge_file:
+            if not self._require_admin():
+                return
+            self._handle_get_knowledge_file(int(knowledge_file.group(1)))
             return
 
         # Páginas y archivos estáticos del frontend
@@ -242,6 +301,28 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             self._handle_track_visit()
             return
 
+        if path == "/api/chat":
+            self._handle_public_chat()
+            return
+
+        if path == "/api/admin/knowledge":
+            if not self._require_admin():
+                return
+            self._handle_create_knowledge_text()
+            return
+
+        if path == "/api/admin/knowledge/upload":
+            if not self._require_admin():
+                return
+            self._handle_upload_knowledge()
+            return
+
+        if path == "/api/admin/agent-test":
+            if not self._require_admin():
+                return
+            self._handle_agent_test()
+            return
+
         self._send_json(404, {"error": "Ruta no encontrada."})
 
     # ------------------------------------------------------------------
@@ -254,6 +335,16 @@ class JGRequestHandler(BaseHTTPRequestHandler):
                 return
             prop_id = path.removeprefix("/api/admin/properties/")
             self._handle_update_property(prop_id)
+            return
+        if path == "/api/admin/agent-config":
+            if not self._require_admin():
+                return
+            self._handle_update_agent_config()
+            return
+        if path.startswith("/api/admin/knowledge/"):
+            if not self._require_admin():
+                return
+            self._handle_update_knowledge(path.removeprefix("/api/admin/knowledge/"))
             return
         self._send_json(404, {"error": "Ruta no encontrada."})
 
@@ -280,6 +371,11 @@ class JGRequestHandler(BaseHTTPRequestHandler):
                 return
             prop_id = path.removeprefix("/api/admin/properties/")
             self._handle_delete_property(prop_id)
+            return
+        if path.startswith("/api/admin/knowledge/"):
+            if not self._require_admin():
+                return
+            self._handle_delete_knowledge(path.removeprefix("/api/admin/knowledge/"))
             return
         self._send_json(404, {"error": "Ruta no encontrada."})
 
@@ -1119,6 +1215,431 @@ class JGRequestHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Length", str(len(csv_bytes)))
         self.end_headers()
         self.wfile.write(csv_bytes)
+
+    # ------------------------------------------------------------------
+    # AGENTE IA
+    # ------------------------------------------------------------------
+    def _uploads_dir(self) -> Path:
+        return self.settings.db_path.parent / "uploads" / "knowledge"
+
+    @staticmethod
+    def _load_agent_config(conn: Any) -> dict[str, Any]:
+        row = conn.execute("SELECT * FROM agent_config WHERE id = 1").fetchone()
+        if row:
+            return dict(row)
+        return {
+            "provider": "openai",
+            "api_key_encrypted": "",
+            "api_key_hint": "",
+            "model": llm.PROVIDERS["openai"]["default_model"],
+            "system_prompt": llm.DEFAULT_SYSTEM_PROMPT,
+            "temperature": 0.7,
+            "max_tokens": 1024,
+            "active": 0,
+            "updated_at": "",
+        }
+
+    def _build_agent_system_message(self, conn: Any, cfg: dict[str, Any]) -> str:
+        knowledge = [dict(r) for r in conn.execute(
+            "SELECT title, content FROM knowledge_entries ORDER BY id ASC"
+        ).fetchall()]
+        properties = [serialize_property(r) for r in conn.execute(
+            "SELECT * FROM properties WHERE status IN ('disponible', 'reservado') "
+            "ORDER BY featured DESC, id ASC"
+        ).fetchall()]
+        contact = {
+            "WhatsApp": self.settings.whatsapp_display,
+            "Email": self.settings.contact_email,
+        }
+        return llm.build_system_message(cfg["system_prompt"], knowledge, properties, contact)
+
+    def _call_agent(self, cfg: dict[str, Any], system_message: str,
+                    history: list[dict[str, str]]) -> tuple[str | None, str | None]:
+        """Llama al LLM configurado. Devuelve (respuesta, error_para_usuario)."""
+        if not cfg.get("api_key_encrypted"):
+            return None, "Configura primero la API key del proveedor."
+        try:
+            api_key = llm.decrypt_api_key(cfg["api_key_encrypted"], self.settings.session_secret)
+        except ValueError as exc:
+            return None, str(exc)
+        model = cfg.get("model") or llm.PROVIDERS[cfg["provider"]]["default_model"]
+        messages = [{"role": "system", "content": system_message}, *history]
+        try:
+            reply = llm.chat(
+                cfg["provider"], api_key, model, messages,
+                temperature=float(cfg["temperature"]), max_tokens=int(cfg["max_tokens"]),
+            )
+        except (RuntimeError, ValueError) as exc:
+            sys.stderr.write(f"[JG-AGENT] Error del proveedor: {exc}\n")
+            return None, str(exc)
+        if not reply:
+            return None, "El modelo devolvió una respuesta vacía."
+        return reply, None
+
+    def _handle_agent_status(self) -> None:
+        with get_connection(self.settings.db_path) as conn:
+            cfg = self._load_agent_config(conn)
+        active = bool(cfg["active"]) and bool(cfg["api_key_encrypted"])
+        self._send_json(200, {"active": active})
+
+    def _handle_public_chat(self) -> None:
+        client_key = self.client_address[0] if self.client_address else "unknown"
+        if chat_rate_limited(client_key):
+            self._send_json(429, {"error": "Has enviado muchos mensajes. Intenta de nuevo en unos minutos."})
+            return
+        data = self._read_json()
+        if data is None:
+            return
+        session_key = str(data.get("session_id", "")).strip()
+        message = str(data.get("message", "")).strip()
+        if not SESSION_ID_RE.fullmatch(session_key):
+            self._send_json(400, {"error": "Identificador de sesión inválido."})
+            return
+        if not message:
+            self._send_json(400, {"error": "Escribe un mensaje."})
+            return
+        if len(message) > CHAT_MAX_MESSAGE_CHARS:
+            self._send_json(400, {"error": f"El mensaje no puede superar {CHAT_MAX_MESSAGE_CHARS} caracteres."})
+            return
+
+        with get_connection(self.settings.db_path) as conn:
+            cfg = self._load_agent_config(conn)
+            if not cfg["active"] or not cfg["api_key_encrypted"]:
+                self._send_json(503, {"error": "El asistente virtual no está disponible en este momento."})
+                return
+            conn.execute("INSERT OR IGNORE INTO chat_sessions (session_id) VALUES (?)", (session_key,))
+            conn.commit()
+            session_row_id = conn.execute(
+                "SELECT id FROM chat_sessions WHERE session_id = ?", (session_key,)
+            ).fetchone()["id"]
+            past = conn.execute(
+                """
+                SELECT role, content FROM (
+                    SELECT id, role, content FROM chat_messages
+                    WHERE session_id = ? ORDER BY id DESC LIMIT ?
+                ) ORDER BY id ASC
+                """,
+                (session_row_id, CHAT_HISTORY_LIMIT),
+            ).fetchall()
+            system_message = self._build_agent_system_message(conn, cfg)
+
+        history = [{"role": r["role"], "content": r["content"]} for r in past]
+        # Algunos proveedores exigen que la conversación empiece con el usuario
+        while history and history[0]["role"] != "user":
+            history.pop(0)
+        history.append({"role": "user", "content": message})
+
+        reply, error = self._call_agent(cfg, system_message, history)
+        if error or reply is None:
+            self._send_json(502, {"error": "El asistente no pudo responder. Escríbenos por WhatsApp mientras tanto."})
+            return
+
+        with get_connection(self.settings.db_path) as conn:
+            conn.executemany(
+                "INSERT INTO chat_messages (session_id, role, content) VALUES (?, ?, ?)",
+                [(session_row_id, "user", message), (session_row_id, "assistant", reply)],
+            )
+            conn.commit()
+
+        self._send_json(200, {"reply": reply})
+
+    def _handle_get_agent_config(self) -> None:
+        with get_connection(self.settings.db_path) as conn:
+            cfg = self._load_agent_config(conn)
+        providers = {
+            key: {"name": p["name"], "models": p["models"], "default_model": p["default_model"]}
+            for key, p in llm.PROVIDERS.items()
+        }
+        self._send_json(200, {
+            "config": {
+                "provider": cfg["provider"],
+                "model": cfg["model"],
+                "system_prompt": cfg["system_prompt"],
+                "temperature": cfg["temperature"],
+                "max_tokens": cfg["max_tokens"],
+                "active": bool(cfg["active"]),
+                "has_api_key": bool(cfg["api_key_encrypted"]),
+                "api_key_masked": cfg["api_key_hint"],
+                "updated_at": cfg["updated_at"],
+            },
+            "providers": providers,
+            "default_system_prompt": llm.DEFAULT_SYSTEM_PROMPT,
+        })
+
+    def _handle_update_agent_config(self) -> None:
+        data = self._read_json()
+        if data is None:
+            return
+        provider = str(data.get("provider", "")).strip().lower()
+        if provider not in llm.PROVIDERS:
+            self._send_json(400, {"error": "Proveedor de LLM no soportado."})
+            return
+        model = str(data.get("model", "")).strip() or llm.PROVIDERS[provider]["default_model"]
+        if len(model) > 120 or not re.fullmatch(r"[A-Za-z0-9._:/@-]+", model):
+            self._send_json(400, {"error": "Nombre de modelo inválido."})
+            return
+        system_prompt = str(data.get("system_prompt", "")).strip() or llm.DEFAULT_SYSTEM_PROMPT
+        if len(system_prompt) > 8000:
+            self._send_json(400, {"error": "El prompt de sistema no puede superar 8.000 caracteres."})
+            return
+        try:
+            temperature = float(data.get("temperature", 0.7))
+            max_tokens = int(data.get("max_tokens", 1024))
+        except (TypeError, ValueError):
+            self._send_json(400, {"error": "Temperatura y máximo de tokens deben ser numéricos."})
+            return
+        if not 0.0 <= temperature <= 1.0:
+            self._send_json(400, {"error": "La temperatura debe estar entre 0.0 y 1.0."})
+            return
+        if not 64 <= max_tokens <= 8192:
+            self._send_json(400, {"error": "El máximo de tokens debe estar entre 64 y 8192."})
+            return
+        new_key = str(data.get("api_key", "") or "").strip()
+        clear_key = bool(data.get("clear_api_key"))
+        active = 1 if data.get("active") else 0
+
+        with get_connection(self.settings.db_path) as conn:
+            cfg = self._load_agent_config(conn)
+            encrypted, hint = cfg["api_key_encrypted"], cfg["api_key_hint"]
+            if clear_key:
+                encrypted, hint = "", ""
+            if new_key:
+                if len(new_key) > 500:
+                    self._send_json(400, {"error": "API key demasiado larga."})
+                    return
+                encrypted = llm.encrypt_api_key(new_key, self.settings.session_secret)
+                hint = llm.mask_api_key(new_key)
+            if active and not encrypted:
+                self._send_json(400, {"error": "Agrega una API key antes de activar el agente."})
+                return
+            conn.execute(
+                """
+                INSERT INTO agent_config (id, provider, api_key_encrypted, api_key_hint, model,
+                                          system_prompt, temperature, max_tokens, active, updated_at)
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+                ON CONFLICT(id) DO UPDATE SET
+                    provider = excluded.provider,
+                    api_key_encrypted = excluded.api_key_encrypted,
+                    api_key_hint = excluded.api_key_hint,
+                    model = excluded.model,
+                    system_prompt = excluded.system_prompt,
+                    temperature = excluded.temperature,
+                    max_tokens = excluded.max_tokens,
+                    active = excluded.active,
+                    updated_at = excluded.updated_at
+                """,
+                (provider, encrypted, hint, model, system_prompt, temperature, max_tokens, active),
+            )
+            conn.commit()
+        self._handle_get_agent_config()
+
+    def _handle_agent_test(self) -> None:
+        data = self._read_json()
+        if data is None:
+            return
+        raw_messages = data.get("messages")
+        if not isinstance(raw_messages, list) or not raw_messages:
+            self._send_json(400, {"error": "Envía al menos un mensaje de prueba."})
+            return
+        history: list[dict[str, str]] = []
+        for item in raw_messages[-CHAT_HISTORY_LIMIT:]:
+            if not isinstance(item, dict):
+                continue
+            role = str(item.get("role", "")).strip()
+            content = str(item.get("content", "")).strip()[:CHAT_MAX_MESSAGE_CHARS]
+            if role in {"user", "assistant"} and content:
+                history.append({"role": role, "content": content})
+        while history and history[0]["role"] != "user":
+            history.pop(0)
+        if not history or history[-1]["role"] != "user":
+            self._send_json(400, {"error": "El último mensaje de prueba debe ser del usuario."})
+            return
+
+        with get_connection(self.settings.db_path) as conn:
+            cfg = self._load_agent_config(conn)
+            system_message = self._build_agent_system_message(conn, cfg)
+
+        reply, error = self._call_agent(cfg, system_message, history)
+        if error or reply is None:
+            self._send_json(502, {"error": error or "El agente no respondió."})
+            return
+        self._send_json(200, {"reply": reply})
+
+    @staticmethod
+    def _serialize_knowledge(row: Any) -> dict[str, Any]:
+        data = dict(row)
+        data["has_file"] = bool(data.pop("file_path", ""))
+        data["content_length"] = len(data.get("content") or "")
+        return data
+
+    def _handle_list_knowledge(self) -> None:
+        with get_connection(self.settings.db_path) as conn:
+            rows = conn.execute("SELECT * FROM knowledge_entries ORDER BY id DESC").fetchall()
+        self._send_json(200, {"entries": [self._serialize_knowledge(r) for r in rows]})
+
+    def _handle_create_knowledge_text(self) -> None:
+        data = self._read_json()
+        if data is None:
+            return
+        title = str(data.get("title", "")).strip()[:200]
+        content = str(data.get("content", "")).strip()
+        if not title or not content:
+            self._send_json(400, {"error": "Título y contenido son obligatorios."})
+            return
+        with get_connection(self.settings.db_path) as conn:
+            cursor = conn.execute(
+                "INSERT INTO knowledge_entries (title, entry_type, content) VALUES (?, 'text', ?)",
+                (title, content),
+            )
+            conn.commit()
+            row = conn.execute("SELECT * FROM knowledge_entries WHERE id = ?", (cursor.lastrowid,)).fetchone()
+        self._send_json(201, {"entry": self._serialize_knowledge(row)})
+
+    def _handle_upload_knowledge(self) -> None:
+        data = self._read_json(max_bytes=MAX_UPLOAD_BODY)
+        if data is None:
+            return
+        title = str(data.get("title", "")).strip()[:200]
+        filename = Path(str(data.get("filename", "")).strip()).name[:200]
+        mime_type = str(data.get("mime_type", "")).strip().lower()
+        description = str(data.get("description", "")).strip()
+        if mime_type not in UPLOAD_TYPES:
+            self._send_json(400, {"error": "Solo se permiten archivos PDF o imágenes (PNG, JPG, WEBP, GIF)."})
+            return
+        try:
+            file_bytes = base64.b64decode(str(data.get("data", "")), validate=True)
+        except (binascii.Error, ValueError):
+            self._send_json(400, {"error": "El archivo no está codificado correctamente."})
+            return
+        if not file_bytes:
+            self._send_json(400, {"error": "El archivo está vacío."})
+            return
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            self._send_json(400, {"error": "El archivo supera el máximo de 8 MB."})
+            return
+
+        entry_type, ext = UPLOAD_TYPES[mime_type]
+        signatures = {
+            ".pdf": [b"%PDF"],
+            ".png": [b"\x89PNG"],
+            ".jpg": [b"\xff\xd8\xff"],
+            ".gif": [b"GIF87a", b"GIF89a"],
+        }
+        valid_signature = (
+            file_bytes[:4] == b"RIFF" and file_bytes[8:12] == b"WEBP"
+            if ext == ".webp"
+            else any(file_bytes.startswith(sig) for sig in signatures[ext])
+        )
+        if not valid_signature:
+            self._send_json(400, {"error": "El contenido del archivo no coincide con su tipo."})
+            return
+
+        uploads = self._uploads_dir()
+        uploads.mkdir(parents=True, exist_ok=True)
+        stored_name = f"{secrets.token_hex(12)}{ext}"
+        target = uploads / stored_name
+        target.write_bytes(file_bytes)
+
+        warning = None
+        if entry_type == "pdf":
+            extracted = llm.extract_pdf_text(target)
+            content = "\n\n".join(part for part in (description, extracted) if part)
+            if not extracted:
+                warning = ("No se pudo extraer texto del PDF. Pega el contenido manualmente "
+                           "editando la entrada para que el agente lo use.")
+        else:
+            content = description
+            if not description:
+                warning = ("Agrega una descripción a la imagen: el agente solo usa el texto "
+                           "descriptivo de las imágenes.")
+
+        with get_connection(self.settings.db_path) as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO knowledge_entries (title, entry_type, content, file_path, original_filename)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (title or filename or "Archivo sin título", entry_type, content, stored_name, filename),
+            )
+            conn.commit()
+            row = conn.execute("SELECT * FROM knowledge_entries WHERE id = ?", (cursor.lastrowid,)).fetchone()
+
+        payload: dict[str, Any] = {"entry": self._serialize_knowledge(row)}
+        if warning:
+            payload["warning"] = warning
+        self._send_json(201, payload)
+
+    def _handle_update_knowledge(self, entry_id: str) -> None:
+        if not entry_id.isdigit():
+            self._send_json(400, {"error": "Identificador inválido."})
+            return
+        data = self._read_json()
+        if data is None:
+            return
+        title = str(data.get("title", "")).strip()[:200]
+        content = str(data.get("content", "")).strip()
+        if not title:
+            self._send_json(400, {"error": "El título es obligatorio."})
+            return
+        with get_connection(self.settings.db_path) as conn:
+            cursor = conn.execute(
+                "UPDATE knowledge_entries SET title = ?, content = ? WHERE id = ?",
+                (title, content, int(entry_id)),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                self._send_json(404, {"error": "Entrada no encontrada."})
+                return
+            row = conn.execute("SELECT * FROM knowledge_entries WHERE id = ?", (int(entry_id),)).fetchone()
+        self._send_json(200, {"entry": self._serialize_knowledge(row)})
+
+    def _knowledge_file_path(self, stored_name: str) -> Path | None:
+        if not stored_name:
+            return None
+        uploads = self._uploads_dir().resolve()
+        target = (uploads / stored_name).resolve()
+        if target.parent != uploads:
+            return None
+        return target
+
+    def _handle_delete_knowledge(self, entry_id: str) -> None:
+        if not entry_id.isdigit():
+            self._send_json(400, {"error": "Identificador inválido."})
+            return
+        with get_connection(self.settings.db_path) as conn:
+            row = conn.execute(
+                "SELECT file_path FROM knowledge_entries WHERE id = ?", (int(entry_id),)
+            ).fetchone()
+            if not row:
+                self._send_json(404, {"error": "Entrada no encontrada."})
+                return
+            conn.execute("DELETE FROM knowledge_entries WHERE id = ?", (int(entry_id),))
+            conn.commit()
+        target = self._knowledge_file_path(row["file_path"])
+        if target and target.is_file():
+            target.unlink()
+        self._send_json(200, {"ok": True})
+
+    def _handle_get_knowledge_file(self, entry_id: int) -> None:
+        with get_connection(self.settings.db_path) as conn:
+            row = conn.execute(
+                "SELECT file_path, original_filename FROM knowledge_entries WHERE id = ?", (entry_id,)
+            ).fetchone()
+        target = self._knowledge_file_path(row["file_path"]) if row else None
+        if not target or not target.is_file():
+            self._send_json(404, {"error": "Archivo no encontrado."})
+            return
+        mime, _ = mimetypes.guess_type(str(target))
+        file_bytes = target.read_bytes()
+        safe_name = re.sub(r"[^A-Za-z0-9._\- ]", "_", row["original_filename"] or target.name)
+        self.send_response(200)
+        self.send_header("Content-Type", mime or "application/octet-stream")
+        self.send_header("Content-Length", str(len(file_bytes)))
+        self.send_header("Content-Disposition", f'inline; filename="{safe_name}"')
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "private, max-age=300")
+        self.end_headers()
+        self.wfile.write(file_bytes)
 
 
 def run_server() -> None:

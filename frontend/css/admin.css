@@ -677,6 +677,124 @@ tbody td { padding: 11px 14px; vertical-align: middle; }
 .stat-card .stat-value { font-size: 1.7rem; font-weight: 800; color: var(--primary); margin-top: 4px; }
 
 /* ============================================================
+   AGENTE IA
+   ============================================================ */
+.agent-grid {
+  display: grid;
+  grid-template-columns: 3fr 2fr;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+.agent-card {
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+  margin-bottom: 20px;
+}
+.agent-grid .agent-card { margin-bottom: 0; }
+.agent-card h3 {
+  font-size: .95rem;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.agent-card h4 { font-size: .88rem; color: var(--primary); margin-bottom: 10px; }
+.field-hint { font-size: .78rem; color: var(--text-muted); margin-bottom: 10px; }
+.form-group .field-hint { margin-bottom: 0; }
+
+.agent-pill {
+  font-size: .78rem;
+  font-weight: 700;
+  padding: 4px 12px;
+  border-radius: 20px;
+}
+.agent-pill-on  { background: #e8f5e9; color: var(--success); }
+.agent-pill-off { background: #eceff1; color: var(--text-muted); }
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: .9rem;
+  font-weight: 600;
+  margin: 4px 0 12px;
+  cursor: pointer;
+}
+.toggle-row input { width: 18px; height: 18px; accent-color: var(--primary); }
+
+.agent-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.agent-msg { font-size: .85rem; min-height: 1.2em; margin-bottom: 10px; }
+.agent-msg.ok    { color: var(--success); }
+.agent-msg.error { color: var(--danger); }
+.agent-msg.warn  { color: #e65100; }
+
+.agent-test-card { display: flex; flex-direction: column; }
+.agent-test-messages {
+  flex: 1;
+  min-height: 280px;
+  max-height: 460px;
+  overflow-y: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.agent-bubble {
+  max-width: 88%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  font-size: .87rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.agent-bubble.user      { align-self: flex-end; background: var(--primary); color: #fff; }
+.agent-bubble.assistant { align-self: flex-start; background: var(--bg-card); border: 1px solid var(--border); }
+.agent-bubble.error     { align-self: flex-start; background: #ffebee; color: var(--danger); }
+.agent-bubble.typing    { color: var(--text-muted); font-style: italic; }
+.agent-test-form { display: flex; gap: 8px; }
+.agent-test-form input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: .88rem;
+  outline: none;
+}
+.agent-test-form input:focus { border-color: var(--primary); }
+
+.knowledge-forms {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-bottom: 8px;
+}
+.knowledge-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+}
+.knowledge-form .btn { align-self: flex-start; }
+.kn-type { text-transform: uppercase; font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 10px; }
+.kn-type-text  { background: #e3f2fd; color: var(--info); }
+.kn-type-pdf   { background: #ffebee; color: var(--danger); }
+.kn-type-image { background: #fff8e1; color: #e65100; }
+.kn-preview { color: var(--text-muted); font-size: .8rem; max-width: 420px; }
+.kn-empty   { color: #e65100; font-size: .8rem; font-weight: 600; }
+
+/* ============================================================
    RESPONSIVE — ≤768px
    ============================================================ */
 @media (max-width: 768px) {
@@ -697,6 +815,7 @@ tbody td { padding: 11px 14px; vertical-align: middle; }
   .kpi-grid { grid-template-columns: repeat(2, 1fr); }
   .form-row { grid-template-columns: 1fr; }
   .date-filter { flex-direction: column; align-items: flex-start; }
+  .agent-grid, .knowledge-forms { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 480px) {
