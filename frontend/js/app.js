@@ -991,6 +991,13 @@ window.addEventListener('DOMContentLoaded', () => {
   initHero3D();
   initInteractiveSection3D();
 
+  // Registro de visita anónima para métricas gerenciales
+  fetch('/api/visits', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ page: window.location.pathname, referrer: document.referrer }),
+  }).catch(() => {});
+
   document.getElementById('filter-transaction')?.addEventListener('change', applyFilters);
   document.getElementById('filter-property-type')?.addEventListener('change', applyFilters);
   document.getElementById('filter-location')?.addEventListener('change', applyFilters);

@@ -652,20 +652,31 @@ function renderPropertiesTable(list) {
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">Sin inmuebles</td></tr>';
     return;
   }
-  tbody.innerHTML = list.map(p => `
+  tbody.innerHTML = list.map(p => {
+    const thumb = p.image_url || 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=120&q=80';
+    const propType = p.property_type || p.type || 'apartamento';
+    return `
     <tr>
-      <td>${escapeHTML(p.title)}</td>
-      <td>${escapeHTML(p.type || '—')}</td>
-      <td>${escapeHTML(p.operation || '—')}</td>
-      <td>${escapeHTML(p.city || '—')}</td>
-      <td style="white-space:nowrap">${formatCOP(p.price || 0)}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <img src="${escapeHTML(thumb)}" alt="" style="width:48px;height:48px;border-radius:6px;object-fit:cover;border:1px solid #e2e8f0;flex-shrink:0;" onerror="this.src='https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=120&q=80'">
+          <div>
+            <div style="font-weight:600;color:var(--text-main);">${escapeHTML(p.title)}</div>
+            <div style="font-size:11px;color:var(--text-muted);">${escapeHTML(p.neighborhood || '')}</div>
+          </div>
+        </div>
+      </td>
+      <td style="text-transform:capitalize;">${escapeHTML(propType)}</td>
+      <td style="text-transform:capitalize;">${escapeHTML(p.operation || '—')}</td>
+      <td style="text-transform:capitalize;">${escapeHTML(p.city || '—')}</td>
+      <td style="white-space:nowrap;font-weight:600;">${formatCOP(p.price || 0)}</td>
       <td>${badgeHTML(p.status)}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-secondary btn-xs" onclick='openPropertyModal(${JSON.stringify(p)})'>✏️ Editar</button>
         <button class="btn btn-danger btn-xs" onclick="deleteProperty(${p.id})" style="margin-left:4px;">🗑️</button>
       </td>
     </tr>
-  `).join('');
+  `}).join('');
 }
 
 function openPropertyModal(prop) {
@@ -676,15 +687,15 @@ function openPropertyModal(prop) {
   const fields = {
     'prop-id':           prop ? prop.id           : '',
     'prop-title':        prop ? prop.title         : '',
-    'prop-type':         prop ? prop.type          : '',
-    'prop-operation':    prop ? prop.operation     : '',
+    'prop-type':         prop ? (prop.property_type || prop.type || 'apartamento') : 'apartamento',
+    'prop-operation':    prop ? prop.operation     : 'venta',
     'prop-status':       prop ? prop.status        : 'disponible',
-    'prop-city':         prop ? prop.city          : '',
+    'prop-city':         prop ? (prop.city || 'medellin') : 'medellin',
     'prop-neighborhood': prop ? (prop.neighborhood || '') : '',
     'prop-price':        prop ? prop.price         : '',
-    'prop-area':         prop ? (prop.area || '')  : '',
-    'prop-rooms':        prop ? (prop.rooms || '') : '',
-    'prop-baths':        prop ? (prop.baths || '') : '',
+    'prop-area':         prop ? (prop.area_m2 || prop.area || '')  : '',
+    'prop-rooms':        prop ? (prop.bedrooms || prop.rooms || '') : '',
+    'prop-baths':        prop ? (prop.bathrooms || prop.baths || '') : '',
     'prop-description':  prop ? (prop.description || '') : '',
     'prop-image':        prop ? (prop.image_url || '') : '',
   };
@@ -705,19 +716,29 @@ async function saveProperty() {
   const form = document.getElementById('form-property');
   if (!form.checkValidity()) { form.reportValidity(); return; }
 
+  const price = parseFloat(document.getElementById('prop-price').value) || 0;
+  const pType = document.getElementById('prop-type').value.toLowerCase();
+  const city = document.getElementById('prop-city').value.trim().toLowerCase();
+  const separation_fee = Math.max(1000000, Math.round(price * 0.01));
+
   const body = {
-    title:        document.getElementById('prop-title').value.trim(),
-    type:         document.getElementById('prop-type').value,
-    operation:    document.getElementById('prop-operation').value,
-    status:       document.getElementById('prop-status').value,
-    city:         document.getElementById('prop-city').value.trim(),
-    neighborhood: document.getElementById('prop-neighborhood').value.trim(),
-    price:        parseFloat(document.getElementById('prop-price').value) || 0,
-    area:         parseFloat(document.getElementById('prop-area').value)  || 0,
-    rooms:        parseInt(document.getElementById('prop-rooms').value)   || 0,
-    baths:        parseInt(document.getElementById('prop-baths').value)   || 0,
-    description:  document.getElementById('prop-description').value.trim(),
-    image_url:    document.getElementById('prop-image').value.trim(),
+    title:         document.getElementById('prop-title').value.trim(),
+    property_type: (pType === 'casa' || pType === 'apartamento') ? pType : 'apartamento',
+    type:          (pType === 'casa' || pType === 'apartamento') ? pType : 'apartamento',
+    operation:     document.getElementById('prop-operation').value,
+    status:        document.getElementById('prop-status').value,
+    city:          (city.includes('bogot') || city === 'bogota') ? 'bogota' : 'medellin',
+    neighborhood:  document.getElementById('prop-neighborhood').value.trim() || 'Sector Residencial',
+    price:         price,
+    separation_fee: separation_fee,
+    admin_fee:     0,
+    area_m2:       parseFloat(document.getElementById('prop-area').value) || 100,
+    bedrooms:      parseInt(document.getElementById('prop-rooms').value) || 2,
+    bathrooms:     parseInt(document.getElementById('prop-baths').value) || 2,
+    parking:       1,
+    stratum:       6,
+    description:   document.getElementById('prop-description').value.trim() || 'Excelente propiedad residencial con acabados de lujo.',
+    image_url:     document.getElementById('prop-image').value.trim() || 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?auto=format&fit=crop&w=1200&q=80',
   };
 
   const isEdit = editingPropertyId !== null;

@@ -337,16 +337,10 @@
                     <input type="text" id="prop-title" required placeholder="Ej: Apartamento en Laureles" />
                   </div>
                   <div class="form-group">
-                    <label>Tipo *</label>
+                    <label>Tipo (Solo Vivienda) *</label>
                     <select id="prop-type" required>
-                      <option value="">Seleccionar...</option>
                       <option value="apartamento">Apartamento</option>
                       <option value="casa">Casa</option>
-                      <option value="oficina">Oficina</option>
-                      <option value="local">Local Comercial</option>
-                      <option value="bodega">Bodega</option>
-                      <option value="lote">Lote</option>
-                      <option value="finca">Finca</option>
                     </select>
                   </div>
                 </div>
@@ -354,7 +348,6 @@
                   <div class="form-group">
                     <label>Operación *</label>
                     <select id="prop-operation" required>
-                      <option value="">Seleccionar...</option>
                       <option value="venta">Venta</option>
                       <option value="arriendo">Arriendo</option>
                     </select>
@@ -372,7 +365,10 @@
                 <div class="form-row">
                   <div class="form-group">
                     <label>Ciudad *</label>
-                    <input type="text" id="prop-city" required placeholder="Ej: Medellín" />
+                    <select id="prop-city" required>
+                      <option value="medellin">Medellín</option>
+                      <option value="bogota">Bogotá</option>
+                    </select>
                   </div>
                   <div class="form-group">
                     <label>Barrio / Sector</label>
