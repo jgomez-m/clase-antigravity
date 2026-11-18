@@ -222,6 +222,14 @@ def init_db(settings: Settings) -> None:
                 FOREIGN KEY (property_id) REFERENCES properties(id) ON DELETE SET NULL
             );
 
+            CREATE TABLE IF NOT EXISTS page_visits (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                page TEXT NOT NULL DEFAULT '/',
+                referrer TEXT NOT NULL DEFAULT '',
+                device TEXT NOT NULL DEFAULT 'desktop',
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+
             CREATE TABLE IF NOT EXISTS inquiries (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 name TEXT NOT NULL,

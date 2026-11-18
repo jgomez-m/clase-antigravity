@@ -164,7 +164,7 @@ class JGRequestHandler(BaseHTTPRequestHandler):
         if path == "/api/admin/dashboard":
             if not self._require_admin():
                 return
-            self._handle_admin_dashboard()
+            self._handle_admin_dashboard(query)
             return
 
         if path == "/api/admin/properties":
@@ -183,6 +183,18 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             self._handle_admin_inquiries()
+            return
+
+        if path == "/api/admin/visits":
+            if not self._require_admin():
+                return
+            self._handle_admin_visits(query)
+            return
+
+        if path == "/api/admin/reports/csv":
+            if not self._require_admin():
+                return
+            self._handle_admin_csv_report(query)
             return
 
         # Páginas y archivos estáticos del frontend
@@ -224,6 +236,10 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             if not self._require_admin():
                 return
             self._handle_create_property()
+            return
+
+        if path == "/api/visits":
+            self._handle_track_visit()
             return
 
         self._send_json(404, {"error": "Ruta no encontrada."})
@@ -549,30 +565,107 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             {"Set-Cookie": cookie_val},
         )
 
-    def _handle_admin_dashboard(self) -> None:
+    def _handle_admin_dashboard(self, query: dict[str, list[str]] | None = None) -> None:
+        if query is None:
+            query = {}
+        date_from = (query.get("from", [""])[0] or "").strip()
+        date_to = (query.get("to", [""])[0] or "").strip()
+
         with get_connection(self.settings.db_path) as conn:
+            # KPIs generales
             total_props = conn.execute("SELECT COUNT(*) FROM properties").fetchone()[0]
             avail_props = conn.execute("SELECT COUNT(*) FROM properties WHERE status = 'disponible'").fetchone()[0]
-            pending_res = conn.execute(
-                "SELECT COUNT(*) FROM reservations WHERE status IN ('pendiente', 'en_revision')"
-            ).fetchone()[0]
-            total_res_amount = conn.execute(
-                "SELECT COALESCE(SUM(total_amount), 0) FROM reservations WHERE status != 'cancelado'"
-            ).fetchone()[0]
+            reserved_props = conn.execute("SELECT COUNT(*) FROM properties WHERE status = 'reservado'").fetchone()[0]
+            closed_props = conn.execute("SELECT COUNT(*) FROM properties WHERE status IN ('vendido','arrendado')").fetchone()[0]
             new_inquiries = conn.execute("SELECT COUNT(*) FROM inquiries WHERE status = 'nuevo'").fetchone()[0]
 
-        self._send_json(
-            200,
-            {
-                "stats": {
-                    "total_properties": total_props,
-                    "available_properties": avail_props,
-                    "pending_reservations": pending_res,
-                    "total_reserved_cop": total_res_amount,
-                    "new_inquiries": new_inquiries,
-                }
+            # Filtros de fecha para reservas
+            date_params: list[Any] = []
+            date_clause = ""
+            if date_from and date_to:
+                date_clause = "WHERE DATE(created_at) BETWEEN ? AND ?"
+                date_params = [date_from, date_to]
+            elif date_from:
+                date_clause = "WHERE DATE(created_at) >= ?"
+                date_params = [date_from]
+            elif date_to:
+                date_clause = "WHERE DATE(created_at) <= ?"
+                date_params = [date_to]
+
+            total_res = conn.execute(
+                f"SELECT COUNT(*) FROM reservations {date_clause}", date_params
+            ).fetchone()[0]
+            pending_res = conn.execute(
+                f"SELECT COUNT(*) FROM reservations {date_clause + (' AND' if date_clause else 'WHERE')} status IN ('pendiente','en_revision')",
+                date_params
+            ).fetchone()[0]
+            approved_res = conn.execute(
+                f"SELECT COUNT(*) FROM reservations {date_clause + (' AND' if date_clause else 'WHERE')} status = 'aprobado'",
+                date_params
+            ).fetchone()[0]
+            total_income = conn.execute(
+                f"SELECT COALESCE(SUM(total_amount),0) FROM reservations {date_clause + (' AND' if date_clause else 'WHERE')} status IN ('aprobado','cerrado')",
+                date_params
+            ).fetchone()[0]
+
+            conversion_rate = round((approved_res / total_res * 100) if total_res > 0 else 0, 1)
+
+            # Gráfica 1: Ingresos por mes (últimos 6 meses)
+            monthly_income = conn.execute("""
+                SELECT strftime('%Y-%m', created_at) AS month,
+                       COALESCE(SUM(total_amount), 0) AS total
+                FROM reservations
+                WHERE status IN ('aprobado','cerrado')
+                  AND created_at >= date('now', '-6 months')
+                GROUP BY month ORDER BY month ASC
+            """).fetchall()
+
+            # Gráfica 2: Distribución venta vs arriendo
+            dist_venta = conn.execute(
+                "SELECT COUNT(*) FROM reservations r JOIN reservation_items ri ON ri.reservation_id = r.id WHERE ri.operation = 'venta'"
+            ).fetchone()[0]
+            dist_arriendo = conn.execute(
+                "SELECT COUNT(*) FROM reservations r JOIN reservation_items ri ON ri.reservation_id = r.id WHERE ri.operation = 'arriendo'"
+            ).fetchone()[0]
+
+            # Gráfica 3: Cotizaciones por semana (últimas 8 semanas)
+            weekly_res = conn.execute("""
+                SELECT strftime('%Y-W%W', created_at) AS week,
+                       COUNT(*) AS total
+                FROM reservations
+                WHERE created_at >= date('now', '-56 days')
+                GROUP BY week ORDER BY week ASC
+            """).fetchall()
+
+            # Gráfica 4: Top inmuebles más cotizados
+            top_props = conn.execute("""
+                SELECT p.title, COUNT(ri.id) AS cnt
+                FROM reservation_items ri
+                JOIN properties p ON p.id = ri.property_id
+                GROUP BY ri.property_id
+                ORDER BY cnt DESC LIMIT 5
+            """).fetchall()
+
+        self._send_json(200, {
+            "stats": {
+                "total_properties": total_props,
+                "available_properties": avail_props,
+                "reserved_properties": reserved_props,
+                "closed_properties": closed_props,
+                "total_reservations": total_res,
+                "pending_reservations": pending_res,
+                "approved_reservations": approved_res,
+                "total_income_cop": total_income,
+                "conversion_rate": conversion_rate,
+                "new_inquiries": new_inquiries,
             },
-        )
+            "charts": {
+                "monthly_income": [{"month": r["month"], "total": r["total"]} for r in monthly_income],
+                "operation_dist": {"venta": dist_venta, "arriendo": dist_arriendo},
+                "weekly_reservations": [{"week": r["week"], "total": r["total"]} for r in weekly_res],
+                "top_properties": [{"title": r["title"], "count": r["cnt"]} for r in top_props],
+            }
+        })
 
     def _validate_property_payload(self, data: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
         title = str(data.get("title", "")).strip()
@@ -844,6 +937,120 @@ class JGRequestHandler(BaseHTTPRequestHandler):
             self._send_json(404, {"error": "Solicitud no encontrada."})
             return
         self._send_json(200, {"ok": True})
+
+
+    def _handle_admin_visits(self, query: dict[str, list[str]]) -> None:
+        date_from = (query.get("from", [""])[0] or "").strip()
+        date_to = (query.get("to", [""])[0] or "").strip()
+
+        date_params: list[Any] = []
+        date_clause = ""
+        if date_from and date_to:
+            date_clause = "WHERE DATE(created_at) BETWEEN ? AND ?"
+            date_params = [date_from, date_to]
+        elif date_from:
+            date_clause = "WHERE DATE(created_at) >= ?"
+            date_params = [date_from]
+        elif date_to:
+            date_clause = "WHERE DATE(created_at) <= ?"
+            date_params = [date_to]
+
+        with get_connection(self.settings.db_path) as conn:
+            total_visits = conn.execute(
+                f"SELECT COUNT(*) FROM page_visits {date_clause}", date_params
+            ).fetchone()[0]
+
+            by_page = conn.execute(f"""
+                SELECT page, COUNT(*) AS cnt FROM page_visits {date_clause}
+                GROUP BY page ORDER BY cnt DESC LIMIT 10
+            """, date_params).fetchall()
+
+            by_device = conn.execute(f"""
+                SELECT device, COUNT(*) AS cnt FROM page_visits {date_clause}
+                GROUP BY device ORDER BY cnt DESC
+            """, date_params).fetchall()
+
+            daily = conn.execute(f"""
+                SELECT DATE(created_at) AS day, COUNT(*) AS cnt
+                FROM page_visits {date_clause}
+                GROUP BY day ORDER BY day ASC LIMIT 30
+            """, date_params).fetchall()
+
+        self._send_json(200, {
+            "total_visits": total_visits,
+            "by_page": [{"page": r["page"], "count": r["cnt"]} for r in by_page],
+            "by_device": [{"device": r["device"], "count": r["cnt"]} for r in by_device],
+            "daily": [{"day": r["day"], "count": r["cnt"]} for r in daily],
+        })
+
+    def _handle_track_visit(self) -> None:
+        data = self._read_json()
+        if data is None:
+            return
+        page = str(data.get("page", "/")).strip()[:200]
+        referrer = str(data.get("referrer", "")).strip()[:500]
+        ua = self.headers.get("User-Agent", "").lower()
+        if any(x in ua for x in ["mobile", "android", "iphone", "ipad"]):
+            device = "mobile"
+        elif "tablet" in ua:
+            device = "tablet"
+        else:
+            device = "desktop"
+        with get_connection(self.settings.db_path) as conn:
+            conn.execute(
+                "INSERT INTO page_visits (page, referrer, device) VALUES (?, ?, ?)",
+                (page, referrer, device)
+            )
+            conn.commit()
+        self._send_json(201, {"ok": True})
+
+    def _handle_admin_csv_report(self, query: dict[str, list[str]]) -> None:
+        date_from = (query.get("from", [""])[0] or "").strip()
+        date_to = (query.get("to", [""])[0] or "").strip()
+
+        date_params: list[Any] = []
+        date_clause = ""
+        if date_from and date_to:
+            date_clause = "WHERE DATE(r.created_at) BETWEEN ? AND ?"
+            date_params = [date_from, date_to]
+        elif date_from:
+            date_clause = "WHERE DATE(r.created_at) >= ?"
+            date_params = [date_from]
+        elif date_to:
+            date_clause = "WHERE DATE(r.created_at) <= ?"
+            date_params = [date_to]
+
+        with get_connection(self.settings.db_path) as conn:
+            rows = conn.execute(f"""
+                SELECT r.order_code, r.customer_name, r.customer_email, r.customer_phone,
+                       r.customer_city, r.payment_method, r.total_amount, r.status,
+                       r.created_at,
+                       GROUP_CONCAT(ri.property_title, ' | ') AS properties
+                FROM reservations r
+                LEFT JOIN reservation_items ri ON ri.reservation_id = r.id
+                {date_clause}
+                GROUP BY r.id ORDER BY r.id DESC
+            """, date_params).fetchall()
+
+        import csv, io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["Código", "Cliente", "Email", "Teléfono", "Ciudad",
+                         "Pago", "Monto", "Estado", "Fecha", "Inmuebles"])
+        for r in rows:
+            writer.writerow([
+                r["order_code"], r["customer_name"], r["customer_email"],
+                r["customer_phone"], r["customer_city"], r["payment_method"],
+                r["total_amount"], r["status"], r["created_at"], r["properties"] or ""
+            ])
+        csv_bytes = output.getvalue().encode("utf-8-sig")
+        filename = f"cotizaciones_{date_from or 'todo'}_{date_to or 'todo'}.csv"
+        self.send_response(200)
+        self.send_header("Content-Type", "text/csv; charset=utf-8")
+        self.send_header("Content-Disposition", f'attachment; filename="{filename}"')
+        self.send_header("Content-Length", str(len(csv_bytes)))
+        self.end_headers()
+        self.wfile.write(csv_bytes)
 
 
 def run_server() -> None:
